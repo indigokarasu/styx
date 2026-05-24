@@ -15,3 +15,9 @@ Styx owns all transaction-related scripts:
 - `update.sh` — self-update from GitHub source
 
 Plaid scripts are also wrapped from `~/.hermes/scripts/` for cron compatibility.
+
+## Related reference files
+
+- `references/schema.md` — Full SQL DDL for merchants, transaction_merchants, enrichment_runs tables
+- `references/query-api.md` — Python query patterns for consumer skills (category transactions, spending by merchant, unresolved)
+- `references/enrichment-pipeline.md` — Pipeline stage details and name cleaning rules
