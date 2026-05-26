@@ -9,10 +9,9 @@ Styx owns all transaction-related scripts:
 - `llm_resolve.py` — LLM-based merchant resolution
 - `resolve.py` — transaction name resolution
 - `query.py` — query helper for the Styx database
-- `seed.py` — database seeding
+- `seed.py` — database seeding and schema migrations
 - `styx_parser.py` — transaction parser
 - `styx_places_enrich.py` — Google Places enrichment for venues
-- `update.sh` — self-update from GitHub source
 
 Plaid scripts are also wrapped from `~/.hermes/scripts/` for cron compatibility.
 
