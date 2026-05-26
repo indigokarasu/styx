@@ -1,22 +1,22 @@
 ---
 name: ocas-styx
-description: 'Styx: transaction data store with merchant enrichment. Provides a clean,
-  queryable interface over raw bank transaction data. Enriches garbled/ obfuscated
-  transaction names into real business entities using SearXNG search + LLM resolution.
-  Includes financial sync (Plaid API) for pulling transactions and balances daily.
-  Other skills (Taste, Rally, Vesper, Corvus) read from Styx for consumption signals,
-  spending analysis, and pattern detection. Styx is append-only: raw transaction data
-  is never modified. Enrichment adds resolved merchant records and links transactions
-  to canonical business entities. Trigger phrases: ''styx'', ''transaction data'',
-  ''merchant lookup'', ''what did I spend'', ''enrich transactions'', ''business matching'',
-  ''where did I spend'', ''pull transactions'', ''sync my bank'', ''bank API'', ''financial
-  data'', ''account balance''.
+description: >
+  Styx: transaction data store with merchant enrichment. Provides a clean, queryable
+  interface over raw bank transaction data. Enriches garbled/obfuscated transaction
+  names into real business entities using SearXNG search + LLM resolution. Includes
+  financial sync (Plaid API) for pulling transactions and balances daily. Other skills
+  (Taste, Rally, Vesper, Corvus, Sands) read from Styx for consumption signals,
+  spending analysis, and pattern detection. NOT for creating transactions (use bank),
+  budgeting strategy (use Rally), or email-based consumption scanning (use Taste).
 
-'
+license: MIT
 metadata:
   author: Indigo Karasu
-  version: 1.1.0
-license: MIT
+  version: 1.2.0
+includes:
+  - references/**
+  - scripts/**
+
 ---
 
 # Styx — Transaction Data Store
@@ -24,6 +24,23 @@ license: MIT
 Styx is the system's transaction intelligence layer. It sits between raw bank
 data (from Plaid via financial-sync) and consumer skills that need clean
 merchant information (Taste, Rally, Vesper, Corvus, Sands).
+
+## When to Use
+
+- Enriching garbled/obfuscated transaction names into real business entities
+- Merchant lookup and business matching from transaction data
+- Answering "what did I spend" or "where did I spend" questions
+- Pulling/syncing bank transactions via Plaid API
+- Spending analysis, pattern detection, or calendar-based spending context
+- Providing clean merchant data to consumer skills (Taste, Rally, Vesper, Corvus, Sands)
+
+## When NOT to Use
+
+- Budgeting strategy or financial planning (use Rally)
+- Email-based consumption scanning (use Taste)
+- Creating or modifying transactions (use your bank directly)
+- General web research or non-transaction search (use Sift)
+- Account management (adding/removing bank links) — use Plaid Link flow directly
 
 ## Core principles
 
@@ -159,6 +176,19 @@ After every enrichment run, verify the results before marking the run as complet
 
 If spot-check records fail validation (garbled names persisted), re-run the failed transactions through the LLM resolution stage before delivering results to consumer skills.
 
+## Automation
+
+### Self-update
+
+Pull the latest Styx package from GitHub source. Full procedure including schema migrations: `references/self_update.md`.
+
+Quick command:
+```bash
+cd {skill_root} && git pull origin main
+```
+
+Data files (`styx.db`, `transactions.db`, `review_queue.jsonl`) are never modified by updates.
+
 ## Support File Map
 
 | File | When to read |
@@ -168,6 +198,7 @@ If spot-check records fail validation (garbled names persisted), re-run the fail
 | `references/schema.md` | Before querying or modifying the database; contains full DDL for all tables |
 | `references/query-api.md` | Before writing consumer queries; contains Python examples for common patterns |
 | `references/enrichment-pipeline.md` | Before running or debugging enrichment; contains stage details and name cleaning rules |
+| `references/self_update.md` | Before running self-update; contains pull/install procedure and migration steps |
 
 ## Files
 
@@ -201,6 +232,17 @@ On first run:
 2. Run initial enrichment on all existing transactions
 3. Generate review queue for low-confidence matches
 4. Log enrichment run stats
+
+## Support file map
+
+| File | When to read |
+|------|-------------|
+| `references/enrichment-pipeline.md` | When working with enrichment pipeline |
+| `references/financial-sync.md` | When working with financial sync |
+| `references/query-api.md` | When working with query api |
+| `references/schema.md` | When working with schema |
+| `references/scripts.md` | When working with scripts |
+| `references/self_update.md` | When working with self_update |
 
 ## Visibility
 
