@@ -1,22 +1,29 @@
 ---
 name: ocas-styx
-description: >
-  Styx: transaction data store with merchant enrichment. Provides a clean, queryable
-  interface over raw bank transaction data. Enriches garbled/obfuscated transaction
-  names into real business entities using SearXNG search + LLM resolution. Includes
-  financial sync (Plaid API) for pulling transactions and balances daily. Other skills
-  (Taste, Rally, Vesper, Corvus, Sands) read from Styx for consumption signals,
-  spending analysis, and pattern detection. NOT for creating transactions (use bank),
-  budgeting strategy (use Rally), or email-based consumption scanning (use Taste).
+source: https://github.com/indigokarasu/styx
+description: 'Styx: transaction data store with merchant enrichment. Provides a clean,
+  queryable interface over raw bank transaction data. Enriches garbled/obfuscated
+  transaction names into real business entities using SearXNG search + LLM resolution.
+  Includes financial sync (Plaid API) for pulling transactions and balances daily.
+  Other skills (Taste, Rally, Vesper, Corvus, Sands) read from Styx for consumption
+  signals, spending analysis, and pattern detection. NOT for creating transactions
+  (use bank), budgeting strategy (use Rally), or email-based consumption scanning
+  (use Taste).
 
+  '
 license: MIT
 metadata:
-  author: Indigo Karasu
-  version: 1.2.0
+  author: Indigo Karasu (indigokarasu)
+  version: 1.3.0
 includes:
-  - references/**
-  - scripts/**
-
+- references/**
+- scripts/**
+triggers:
+- transaction data
+- bank transactions
+- merchant enrichment
+- financial data store
+- query transactions
 ---
 
 # Styx — Transaction Data Store
@@ -33,6 +40,7 @@ merchant information (Taste, Rally, Vesper, Corvus, Sands).
 - Pulling/syncing bank transactions via Plaid API
 - Spending analysis, pattern detection, or calendar-based spending context
 - Providing clean merchant data to consumer skills (Taste, Rally, Vesper, Corvus, Sands)
+- Parsing email receipts (e.g., Rainbow Grocery eReceipts) and storing line items in `receipt_line_items` table
 
 ## When NOT to Use
 
@@ -77,8 +85,31 @@ Styx maintains its own SQLite database at `{agent_root}/data/styx.db`.
 
 ### Schema
 
-Three tables: `merchants`, `transaction_merchants`, `enrichment_runs`.
+Three core tables: `merchants`, `transaction_merchants`, `enrichment_runs`.
+Receipt parsing table: `receipt_line_items` (23 columns — see below).
 Full DDL: [`references/schema.md`](references/schema.md)
+
+### receipt_line_items Table (23 columns)
+
+Used for storing parsed email receipt line items (e.g., Rainbow Grocery eReceipts).
+
+**Correct INSERT pattern:**
+```python
+styx.execute('''
+    INSERT INTO receipt_line_items (
+        transaction_id, message_id, receipt_number,
+        plu_upc, product_name, brand, category, subcategory,
+        department, price, tax_code,
+        quantity, unit_price, weight_lb, price_per_lb,
+        is_bulk, is_organic, source_receipt_date,
+        match_method, match_confidence, merchant_name, created_at
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+''', (tx_id, msg_id, receipt_num, plu, name, brand, cat, subcat,
+      dept, price, tax, qty, unit_p, wlb, pplb,
+      is_bulk, is_org, date, method, conf, 'Merchant Name'))
+```
+
+**Gotcha — "table has 23 columns but N values supplied"**: Omit `id` (auto-increment) but include all other 22 columns. Always list columns explicitly. Use `CURRENT_TIMESTAMP` for `created_at`. `merchant_name` is required.
 
 ## Enrichment pipeline
 
@@ -95,6 +126,23 @@ Other skills read from Styx using these patterns:
 Full Python examples: [`references/query-api.md`](references/query-api.md)
 
 DB path: `{agent_root}/data/styx.db`
+
+## Receipt Parsing Pipeline
+
+When parsing email receipts (e.g., Rainbow Grocery):
+
+1. **Fetch emails** via `get_gmail_messages_content_batch` — large results persisted to `/tmp/hermes-results/<uuid>.txt`
+2. **Parse persisted files** — XML wrapper around JSON requires brace-depth counting to extract first complete JSON object
+3. **Extract bodies** — split by `\n\nMessage ID: `, then extract between `--- BODY ---` and `---\n\n`
+4. **Parse line items** — handle department headers, PLU/UPC codes, prices, weight/quantity info
+5. **Write to Styx** — use the `receipt_line_items` INSERT pattern above (22 values, `id` auto-increments)
+
+**Gmail file parsing gotchas:**
+- Files in `/tmp/hermes-results/` have `<untrusted_tool_result>` XML wrapper — extract JSON via `{"result":` search + brace counting
+- `json.loads(raw_file)` will fail if there's trailing content — usebrace-depth counting
+- Small results are inline only (not persisted); large results (~100KB+) are persisted
+- Strip `--- ATTACHMENTS ---` and everything after from email bodies
+- If intermediate data gets corrupted, re-fetch from Gmail directly — don't try to reconstruct from partial files
 
 ## Consumer skill contracts
 
@@ -166,6 +214,9 @@ This skill implements the recovery contract from `spec-ocas-recovery.md`.
 - **Redacted names can't be enriched** — Transactions with fully redacted names (`***************`) are skipped entirely. Partially redacted names (e.g., `UNITED **************`) use the base name for matching.
 - **Low-confidence matches go to review queue** — Transactions with enrichment confidence < 0.5 are written to `review_queue.jsonl` for manual review, not silently discarded.
 - **Consumer skills are read-only** — Taste, Rally, Vesper, Corvus, and Sands query Styx but must never write to Styx tables. Write access is exclusive to the Styx skill.
+- **receipt_line_items INSERT requires 22 values** — The table has 23 columns but `id` auto-increments. List all 22 non-id columns explicitly. Use `CURRENT_TIMESTAMP` for `created_at`. `merchant_name` is required.
+- **Gmail persisted results need XML stripping** — Files in `/tmp/hermes-results/` wrap JSON in `<untrusted_tool_result>` tags. Use brace-depth counting to extract the first complete JSON object.
+- **`llm_resolve.py` does NOT work in cron/background context** — The script calls `hermes ask --no-stream` via subprocess, which returns no output when there is no interactive session (cron jobs, background agents). Transactions that reach Stage 4 (LLM resolution) will be silently written to `review_queue.jsonl` without actual LLM processing. **Workaround:** Run `llm_resolve.py` manually/interactively after a cron enrichment run, or call the LLM directly via the `ask` tool in an interactive session. See `references/cron-gotchas.md`.
 
 ## Post-enrichment verification
 
@@ -199,6 +250,7 @@ Data files (`styx.db`, `transactions.db`, `review_queue.jsonl`) are never modifi
 | `references/query-api.md` | Before writing consumer queries; contains Python examples for common patterns |
 | `references/enrichment-pipeline.md` | Before running or debugging enrichment; contains stage details and name cleaning rules |
 | `references/self_update.md` | Before running self-update; contains pull/install procedure and migration steps |
+| `references/cron-gotchas.md` | Before debugging cron enrichment failures; contains known cron/background execution pitfalls |
 
 ## Files
 
@@ -232,17 +284,6 @@ On first run:
 2. Run initial enrichment on all existing transactions
 3. Generate review queue for low-confidence matches
 4. Log enrichment run stats
-
-## Support file map
-
-| File | When to read |
-|------|-------------|
-| `references/enrichment-pipeline.md` | When working with enrichment pipeline |
-| `references/financial-sync.md` | When working with financial sync |
-| `references/query-api.md` | When working with query api |
-| `references/schema.md` | When working with schema |
-| `references/scripts.md` | When working with scripts |
-| `references/self_update.md` | When working with self_update |
 
 ## Visibility
 
