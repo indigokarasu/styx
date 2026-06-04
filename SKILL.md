@@ -1,5 +1,6 @@
 ---
 name: ocas-styx
+source: https://github.com/indigokarasu/styx
 description: 'Styx: transaction data store with merchant enrichment. Provides a clean,
   queryable interface over raw bank transaction data. Enriches garbled/obfuscated
   transaction names into real business entities using SearXNG search + LLM resolution.
