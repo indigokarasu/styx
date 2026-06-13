@@ -26,7 +26,16 @@ Rainbow Grocery sends eReceipt emails with a single-line concatenated format. Al
 
 ### Table Schema
 
-`receipt_line_items`: transaction_id, message_id, receipt_number, plu_upc, product_name, brand, category, subcategory, department, price, tax_code, quantity, unit_price, weight_lb, price_per_lb, is_bulk, is_organic, source_receipt_date, match_method, match_confidence.
+`receipt_line_items`: transaction_id, message_id, receipt_number, plu_upc, product_name, brand, category, subcategory, department, price, tax_code, quantity, unit_price, weight_lb, price_per_lb, is_bulk, is_organic, source_receipt_date, match_method, match_confidence, merchant_name, created_at.
+
+Full DDL: See `references/schema.md` → `receipt_line_items` CREATE TABLE. **The table must exist before inserting** — if styx.db is empty, initialize all tables from schema.md first.
+
+### Gmail Search Patterns
+
+For Rainbow Grocery eReceipts:
+- Exact phrase: `"eReceipt from Rainbow Grocery" newer_than:7d` — most precise
+- Broad: `from:rainbow.coop "Receipt #" newer_than:14d` — catches edge cases
+- The `newer_than` filter uses Gmail's internal date, which may differ from the receipt date printed in the email body. Always cross-check the email body date against the transaction date.
 
 ### Known Issues
 
