@@ -1,23 +1,20 @@
 ---
 name: ocas-styx
-source: https://github.com/indigokarasu/styx
-description: 'Styx: transaction data store with merchant enrichment. Provides a clean,
-  queryable interface over raw bank transaction data. Enriches garbled/obfuscated
-  transaction names into real business entities using SearXNG search + LLM resolution.
-  Includes financial sync (Plaid API) for pulling transactions and balances daily.
-  Other skills (Taste, Rally, Vesper, Corvus, Sands) read from Styx for consumption
-  signals, spending analysis, and pattern detection. NOT for creating transactions
-  (use bank), budgeting strategy (use Rally), or email-based consumption scanning
-  (use Taste).
-
-  '
+description: 'Transaction data store with merchant enrichment. Provides a clean, queryable interface over raw bank transaction data. Enriches garbled/obfuscated transaction names into real business entities using SearXNG search plus LLM resolution. Includes financial sync (Plaid API) for pulling transactions and balances daily. Other skills (Taste, Rally, Vesper, Corvus, Sands) read from Styx for consumption signals, spending analysis, and pattern detection. NOT for creating transactions (use bank), budgeting strategy (use Rally), or email-based consumption scanning (use Taste).'
 license: MIT
-metadata:
-  author: Indigo Karasu (indigokarasu)
-  version: 1.3.0
+source: https://github.com/indigokarasu/styx
 includes:
 - references/**
 - scripts/**
+metadata:
+  author: Indigo Karasu (indigokarasu)
+  version: 1.4.0
+tags:
+- transactions
+- finance
+- merchant-enrichment
+- banking
+- data-store
 triggers:
 - transaction data
 - bank transactions
@@ -64,24 +61,18 @@ merchant information (Taste, Rally, Vesper, Corvus, Sands).
 
 ## Data flow
 
-```
-Plaid API → financial-sync → transactions.db (raw)
-                                    ↓
-                              Styx enrichment pipeline
-                              (SearXNG + LLM)
-                                    ↓
-                         styx.db (enriched merchants,
-                                  transaction links)
-                                    ↓
-                    ┌───────────────┼───────────────┐
-                    ↓               ↓               ↓
-                 Taste          Rally           Vesper
-              (restaurants)  (spending)     (briefings)
-```
+See `references/data-flow.md` for the data flow diagram.
 
 ## Database
 
-Styx maintains its own SQLite database at `{agent_root}/data/styx.db`.
+Styx maintains its own SQLite database at `/root/.hermes/data/styx.db`.
+**IMPORTANT:** Hardcode this path. Do NOT use `{agent_root}` — it resolves to the indigo profile home, not the shared data directory.
+
+The active DBs are:
+- `/root/.hermes/data/transactions.db` — raw Plaid transaction data
+- `/root/.hermes/data/styx.db` — enriched merchant data
+
+A second copy exists at `/root/.hermes/commons/data/ocas-styx/styx.db` but it is a stale 0-byte stub — ignore it.
 
 ### Schema
 
@@ -93,197 +84,144 @@ Full DDL: [`references/schema.md`](references/schema.md)
 
 Used for storing parsed email receipt line items (e.g., Rainbow Grocery eReceipts).
 
-**Correct INSERT pattern:**
-```python
-styx.execute('''
-    INSERT INTO receipt_line_items (
-        transaction_id, message_id, receipt_number,
-        plu_upc, product_name, brand, category, subcategory,
-        department, price, tax_code,
-        quantity, unit_price, weight_lb, price_per_lb,
-        is_bulk, is_organic, source_receipt_date,
-        match_method, match_confidence, merchant_name, created_at
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
-''', (tx_id, msg_id, receipt_num, plu, name, brand, cat, subcat,
-      dept, price, tax, qty, unit_p, wlb, pplb,
-      is_bulk, is_org, date, method, conf, 'Merchant Name'))
-```
-
-**Gotcha — "table has 23 columns but N values supplied"**: Omit `id` (auto-increment) but include all other 22 columns. Always list columns explicitly. Use `CURRENT_TIMESTAMP` for `created_at`. `merchant_name` is required.
+See `references/receipt-line-items-insert.md` for the correct INSERT pattern and gotchas.
 
 ## Enrichment pipeline
 
-The pipeline resolves garbled/obfuscated transaction names into real businesses through five stages: exact match → fuzzy match → SearXNG search → LLM resolution → manual review queue. Full details, stage descriptions, and name cleaning rules: [`references/enrichment-pipeline.md`](references/enrichment-pipeline.md)
+### Google Places Enrichment (All Categories)
+
+The enrichment pipeline resolves garbled/obfuscated transaction names into real businesses.
+The **default script only enriches food merchants**. For full coverage, use the 
+**universal enrichment script**:
+
+**Script:** [`styx_universal_enrichment.md`](references/styx_universal_enrichment.md) ← read this reference first
+
+```bash
+# Universal enrichment — all non-financial categories
+python3 /root/.hermes/commons/data/ocas-styx/styx_universal_enrich.py
+
+# Food-only (original script)
+python3 /root/.hermes/skills/ocas-styx/scripts/styx_places_enrich.py --all
+```
+
+**Categories covered by universal script:** retail, service, entertainment, transport,
+personal_care, medical, home, government, housing, travel, food/restaurant (all 10 food subcategories).
+
+**Categories skipped (no physical location):** transfer, income, bank_fees, loan_payments,
+loan_disbursements. These get `source: 'internal'`.
+
+### Legacy LLM Enrichment Pipeline
+
+For garbled names that Google Places can't resolve: exact match → fuzzy match → SearXNG search → LLM resolution → manual review queue. Full details: [`references/enrichment-pipeline.md`](references/enrichment-pipeline.md)
 
 ## Query API
 
 Other skills read from Styx using these patterns:
-
 - **Category transactions**: enriched transactions filtered by merchant category
 - **Spending by merchant**: aggregated totals and visit counts
 - **Unresolved transactions**: candidates needing enrichment
-
-Full Python examples: [`references/query-api.md`](references/query-api.md)
 
 DB path: `{agent_root}/data/styx.db`
 
 ## Receipt Parsing Pipeline
 
 When parsing email receipts (e.g., Rainbow Grocery):
-
 1. **Fetch emails** via `get_gmail_messages_content_batch` — large results persisted to `/tmp/hermes-results/<uuid>.txt`
 2. **Parse persisted files** — XML wrapper around JSON requires brace-depth counting to extract first complete JSON object
 3. **Extract bodies** — split by `\n\nMessage ID: `, then extract between `--- BODY ---` and `---\n\n`
 4. **Parse line items** — handle department headers, PLU/UPC codes, prices, weight/quantity info
 5. **Write to Styx** — use the `receipt_line_items` INSERT pattern above (22 values, `id` auto-increments)
 
-**Gmail file parsing gotchas:**
-- Files in `/tmp/hermes-results/` have `<untrusted_tool_result>` XML wrapper — extract JSON via `{"result":` search + brace counting
-- `json.loads(raw_file)` will fail if there's trailing content — usebrace-depth counting
-- Small results are inline only (not persisted); large results (~100KB+) are persisted
-- Strip `--- ATTACHMENTS ---` and everything after from email bodies
-- If intermediate data gets corrupted, re-fetch from Gmail directly — don't try to reconstruct from partial files
-
 ## Consumer skill contracts
 
 ### Taste
-
 Taste reads from Styx to discover restaurants and food businesses that Jared
-has transacted with but that didn't appear in email/calendar (e.g., walk-ins,
-cash transactions, small merchants that don't send confirmation emails).
+has transacted with but that didn't appear in email/calendar.
 
 Taste queries:
 - `m.category IN ('restaurant', 'cafe', 'bar', 'food')` for dining
 - `m.category IN ('grocery', 'supermarket', 'food_store')` for food shopping
 - Transactions with `personal_finance_category = 'FOOD_AND_DRINK'` as fallback
 
-Taste does NOT write to Styx. It writes to its own `signals.jsonl` and
-`items.jsonl` as usual.
+Taste does NOT write to Styx. It writes to its own `signals.jsonl` and `items.jsonl`.
 
 ### Rally
-
 Rally reads from Styx for spending analysis and budget tracking.
 
 ### Vesper
-
 Vesper reads from Styx for daily/weekly spending summaries in briefings.
 
 ### Corvus
-
 Corvus reads from Styx for pattern detection in spending behavior.
 
 ### Sands
-
-Sands reads from Styx for calendar-based spending context (what did Jared
-spend at places he visited).
+Sands reads from Styx for calendar-based spending context.
 
 ## Security
-
 - Styx DB is read-only for consumer skills (enforced by skill contract, not filesystem)
 - Raw transaction data in transactions.db is never modified by Styx
 - Enrichment data is additive only
-- Review queue is the only user-facing output for low-confidence matches
 
 ## Financial Sync
-
-Styx ingests raw transactions from Plaid via the financial sync pipeline.
-Full provider docs, setup steps, credentials, and scripts: `references/financial-sync.md`
-
-**Quick reference:**
-- Plaid Portal (free personal tier): https://portal.plaid.com
 - Sync script: `{skill_root}/scripts/plaid_sync.py` (incremental, daily 7 AM cron)
 - History script: `{skill_root}/scripts/plaid_history.py` (full 24-month pull)
 - DB: `{agent_root}/data/transactions.db` (raw, read-only)
 - Cron job `a418e00ee21e`: daily 7 AM, `no_agent: true`
-- Connected: Capital One, Chase, Citi, SF Fire Credit Union, Shaka, Wealthfront
-- State file: `{agent_root}/data/banksync.md`
-
-## Recovery Behavior
-
-This skill implements the recovery contract from `spec-ocas-recovery.md`.
-
-- **Evidence**: Every enrichment run writes an evidence record, including no-op runs. The `not_activity_reason` field is mandatory when no side effects occur.
-- **Gap detection**: Not applicable — on-demand only.
-- **Degraded mode**: When Plaid API or SearXNG are unavailable, logs `degraded: <dependency>` and continues with available sources.
-- **Log compaction**: Enrichment logs older than 30 days compacted. Last 7 days retained.
 
 ## Gotchas
 
-- **Raw transaction data is sacred** — Styx never modifies or deletes records in `transactions.db`. Enrichment data lives in separate tables (`merchants`, `transaction_merchants`) linked by `transaction_id`.
-- **Name cleaning is essential** — Plaid transaction names are heavily obfuscated (e.g., `DD *DOORDASH ROYALINDI`, `ABM-350 MISSION GARAGE`). The enrichment pipeline's name cleaning rules must strip prefixes like `ABM-`, `TCB*`, `MED*`, `DD *DOORDASH ` before matching.
-- **Redacted names can't be enriched** — Transactions with fully redacted names (`***************`) are skipped entirely. Partially redacted names (e.g., `UNITED **************`) use the base name for matching.
-- **Low-confidence matches go to review queue** — Transactions with enrichment confidence < 0.5 are written to `review_queue.jsonl` for manual review, not silently discarded.
-- **Consumer skills are read-only** — Taste, Rally, Vesper, Corvus, and Sands query Styx but must never write to Styx tables. Write access is exclusive to the Styx skill.
-- **receipt_line_items INSERT requires 22 values** — The table has 23 columns but `id` auto-increments. List all 22 non-id columns explicitly. Use `CURRENT_TIMESTAMP` for `created_at`. `merchant_name` is required.
-- **Gmail persisted results need XML stripping** — Files in `/tmp/hermes-results/` wrap JSON in `<untrusted_tool_result>` tags. Use brace-depth counting to extract the first complete JSON object.
-- **`llm_resolve.py` does NOT work in cron/background context** — The script calls `hermes ask --no-stream` via subprocess, which returns no output when there is no interactive session (cron jobs, background agents). Transactions that reach Stage 4 (LLM resolution) will be silently written to `review_queue.jsonl` without actual LLM processing. **Workaround:** Run `llm_resolve.py` manually/interactively after a cron enrichment run, or call the LLM directly via the `ask` tool in an interactive session. See `references/cron-gotchas.md`.
+- **Self-update: untracked files block `git pull`** — `git stash` only stashes tracked files. New (untracked) files in the skill directory will block the merge. Move them aside before pulling, then compare/restore afterward.
+- **Self-update: stash pop may conflict** — After pulling, `git stash pop` can produce merge conflicts if both the pulled changes and the stashed changes touch the same lines.
+- **`query.py --health-check` does not exist** — Use inline Python to verify DB integrity instead.
+- **Raw transaction data is sacred** — Styx never modifies or deletes records in `transactions.db`.
+- **Name cleaning is essential** — Plaid transaction names are heavily obfuscated (e.g., `DD *DOORDASH ROYALINDI`, `ABM-350 MISSION GARAGE`). Strip prefixes before matching.
+- **Redacted names can't be enriched** — Transactions with fully redacted names (`***************`) are skipped entirely.
+- **Consumer skills are read-only** — Taste, Rally, Vesper, Corvus, and Sands query Styx but must never write to Styx tables.
+- **receipt_line_items INSERT requires 22 values** — The table has 23 columns but `id` auto-increments.
+- **`google_auth_mcp` import path is profile-dependent** — When running under the `indigo` Hermes profile, `Path.home()` returns `/root/.hermes/profiles/indigo/home` instead of `/root`. Scripts that do `sys.path.insert(0, str(Path.home() / '.hermes' / 'scripts'))` or `sys.path.insert(0, str(AGENT_ROOT / 'scripts'))` will fail to find `google_auth_mcp.py`. **Fix:** Hardcode `sys.path.insert(0, str(Path('/root/.hermes/scripts')))` in any script that imports `google_auth_mcp`. **Affected scripts (all fixed as of 2026-06-04):** dispatch: `triage.py`, `check_unread.py`, `gmail_search.py`, `gmail_scan.py`; taste: `email_scan.py`, `run_historical_scans.py`; scripts: `email_check.py`, `dream_journal_pipeline.py`.
+- **Indigo's OAuth token file may lack `client_secret`** — The token file at `/root/.google_workspace_mcp/credentials/mx.indigo.karasu@gmail.com.json` may only have `access_token`, `refresh_token`, `client_id` — but `google_auth_mcp.py` needs `client_secret` for token refresh and a `token` key alias. **Fix:** Add `client_secret` from the cached client secret file. Also add `token` as an alias for `access_token` and `token_uri: 'https://oauth2.googleapis.com/token'`.
+- **Jared's token refresh adds `access_token` key** — When refreshing Jared's token, the Google OAuth response includes `access_token` (not `token`). The original file used `token` as the key. After refresh, both keys exist. `google_auth_mcp.py` reads `token_data.get("token")`, so ensure the `token` key is present.
+- **styx.db may exist with no tables** — The DB file can be created empty (0 bytes) by the skill initialization script without the schema being applied. Before any receipt parsing or enrichment, verify tables exist.
+- **`llm_resolve.py` does NOT work in cron/background context** — The script calls `hermes ask --no-stream` via subprocess, which returns no output when there is no interactive session.
+- **styx_places_enrich.py is food-only** — The original enrichment script only covers food/restaurant categories. Use `styx_universal_enrich.py` for all categories. See `references/styx_universal_enrichment.md`.
 
 ## Post-enrichment verification
 
 After every enrichment run, verify the results before marking the run as complete:
-1. Spot-check 5–10 enriched `transaction_merchants` records at random: confirm the resolved merchant name is a real business (not a garbled string that slipped through).
-2. Confirm the `enrichment_runs` table row for this run shows status `completed` with the correct `records_processed` count.
-3. Verify `review_queue.jsonl` has been updated with any new low-confidence matches (confidence < 0.5).
-
-If spot-check records fail validation (garbled names persisted), re-run the failed transactions through the LLM resolution stage before delivering results to consumer skills.
+1. Spot-check 5–10 enriched `transaction_merchants` records at random.
+2. Confirm the `enrichment_runs` table row for this run shows status `completed`.
+3. Verify `review_queue.jsonl` has been updated with any new low-confidence matches.
 
 ## Automation
 
 ### Self-update
-
-Pull the latest Styx package from GitHub source. Full procedure including schema migrations: `references/self_update.md`.
-
-Quick command:
-```bash
-cd {skill_root} && git pull origin main
-```
-
-Data files (`styx.db`, `transactions.db`, `review_queue.jsonl`) are never modified by updates.
+Pull the latest Styx package from GitHub source. Full procedure: `references/self_update.md`.
 
 ## Support File Map
 
 | File | When to read |
 |---|---|
-| `references/financial-sync.md` | Before configuring Plaid sync; contains provider setup, credentials, and cron configuration |
-| `references/scripts.md` | Before running enrichment or query scripts; contains CLI usage and known fixes |
-| `references/schema.md` | Before querying or modifying the database; contains full DDL for all tables |
-| `references/query-api.md` | Before writing consumer queries; contains Python examples for common patterns |
-| `references/enrichment-pipeline.md` | Before running or debugging enrichment; contains stage details and name cleaning rules |
-| `references/self_update.md` | Before running self-update; contains pull/install procedure and migration steps |
-| `references/cron-gotchas.md` | Before debugging cron enrichment failures; contains known cron/background execution pitfalls |
+| `references/styx_universal_enrichment.md` | Before running Google Places enrichment — use this instead of the food-only default |
+| `references/financial-sync.md` | Before configuring Plaid sync |
+| `references/scripts.md` | Before running enrichment or query scripts |
+| `references/schema.md` | Before querying or modifying the database |
+| `references/query-api.md` | Before writing consumer queries |
+| `references/enrichment-pipeline.md` | Before running or debugging LLM enrichment |
+| `references/styx_universal_enrichment.md` | Before running Google Places enrichment (read FIRST) |
+| `references/self_update.md` | Before running self-update |
+| `references/cron-gotchas.md` | Before debugging cron enrichment failures |
 
 ## Files
 
-| File | Purpose |
-|------|---------|
-| `{agent_root}/data/styx.db` | Enriched merchant data + transaction links |
-| `{agent_root}/data/transactions.db` | Raw Plaid transaction data (read-only) |
-| `{agent_root}/data/styx/review_queue.jsonl` | Low-confidence matches for manual review |
-| `{agent_root}/data/styx/intents.jsonl` | Enrichment intent log (what triggered each run) |
-| `{agent_root}/data/styx/evidence.jsonl` | Evidence records for each enrichment run |
-| `{skill_root}/scripts/enrich.py` | Enrichment pipeline |
-| `{skill_root}/scripts/query.py` | Query helper |
+See `references/storage-layout.md` for the full file table.
 
 ## OKRs
 
 ### schedule_adherence
 - **Target**: On-demand enrichment runs complete within 5 minutes of invocation.
-- **Measure**: Time from enrichment trigger to `enrichment_runs.completed_at` for status `completed`.
-- **Degraded**: If Plaid or SearXNG unavailable, run completes with partial results and logs `degraded:` — still counts as adherent.
 
 ### data_integrity
 - **Target**: Zero raw transaction records modified or deleted by enrichment pipeline.
-- **Measure**: Append-only audit — `transactions.db` row count never decreases; `merchants` and `transaction_merchants` tables only grow.
-- **Degraded**: Enrichment records may be marked stale but never deleted; superseded links retain `is_primary = 0`.
-
-## Initialization
-
-On first run:
-
-1. Create `{agent_root}/data/styx.db` with schema
-2. Run initial enrichment on all existing transactions
-3. Generate review queue for low-confidence matches
-4. Log enrichment run stats
 
 ## Visibility
 
