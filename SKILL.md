@@ -1,6 +1,12 @@
 ---
 name: ocas-styx
-description: 'Transaction data store with merchant enrichment. Provides a clean, queryable interface over raw bank transaction data. Enriches garbled/obfuscated transaction names into real business entities using SearXNG search plus LLM resolution. Includes financial sync (Plaid API) for pulling transactions and balances daily. Other skills (Taste, Rally, Vesper, Corvus, Sands) read from Styx for consumption signals, spending analysis, and pattern detection. NOT for creating transactions (use bank), budgeting strategy (use Rally), or email-based consumption scanning (use Taste).'
+description: Transaction data store with merchant enrichment. Provides a clean, queryable
+  interface over raw bank transaction data. Enriches garbled/obfuscated transaction
+  names into real business entities using SearXNG search plus LLM resolution. Includes
+  financial sync (Plaid API) for pulling transactions and balances daily. Other skills
+  (Taste, Rally, Vesper, Corvus, Sands) read from Styx for consumption signals, spending
+  analysis, and pattern detection. NOT for creating transactions (use bank), budgeting
+  strategy (use Rally), or email-based consumption scanning (use Taste).
 license: MIT
 source: https://github.com/indigokarasu/styx
 includes:
@@ -180,6 +186,14 @@ Sands reads from Styx for calendar-based spending context.
 - **receipt_line_items INSERT requires 22 values** — The table has 23 columns but `id` auto-increments.
 - **`google_auth_mcp` import path is profile-dependent** — When running under the `indigo` Hermes profile, `Path.home()` returns `/root/.hermes/profiles/indigo/home` instead of `/root`. Scripts that do `sys.path.insert(0, str(Path.home() / '.hermes' / 'scripts'))` or `sys.path.insert(0, str(AGENT_ROOT / 'scripts'))` will fail to find `google_auth_mcp.py`. **Fix:** Hardcode `sys.path.insert(0, str(Path('/root/.hermes/scripts')))` in any script that imports `google_auth_mcp`. **Affected scripts (all fixed as of 2026-06-04):** dispatch: `triage.py`, `check_unread.py`, `gmail_search.py`, `gmail_scan.py`; taste: `email_scan.py`, `run_historical_scans.py`; scripts: `email_check.py`, `dream_journal_pipeline.py`.
 - **Indigo's OAuth token file may lack `client_secret`** — The token file at `/root/.google_workspace_mcp/credentials/mx.indigo.karasu@gmail.com.json` may only have `access_token`, `refresh_token`, `client_id` — but `google_auth_mcp.py` needs `client_secret` for token refresh and a `token` key alias. **Fix:** Add `client_secret` from the cached client secret file. Also add `token` as an alias for `access_token` and `token_uri: 'https://oauth2.googleapis.com/token'`.
+- **Database and secrets path mismatch (migration artifact)** — After a profile/data migration, the active databases live at `/root/.hermes.old/data/` (`styx.db`, `transactions.db`) and secrets at `/root/.hermes.old/secrets/plaid.env`, but all scripts hardcode `/root/.hermes/data/` and `/root/.hermes/secrets/`. **Workaround:** Create symlinks before running scripts:
+  ```bash
+  mkdir -p /root/.hermes/data
+  ln -sf /root/.hermes.old/data/styx.db /root/.hermes/data/styx.db
+  ln -sf /root/.hermes.old/data/transactions.db /root/.hermes/data/transactions.db
+  ln -sf /root/.hermes.old/secrets /root/.hermes/secrets
+  ```
+  The universal enrichment script at `/root/.hermes.old/commons/data/ocas-styx/styx_universal_enrich.py` (not in the skill's `scripts/` or `commons/data/`) must be run from that location.
 - **Jared's token refresh adds `access_token` key** — When refreshing Jared's token, the Google OAuth response includes `access_token` (not `token`). The original file used `token` as the key. After refresh, both keys exist. `google_auth_mcp.py` reads `token_data.get("token")`, so ensure the `token` key is present.
 - **styx.db may exist with no tables** — The DB file can be created empty (0 bytes) by the skill initialization script without the schema being applied. Before any receipt parsing or enrichment, verify tables exist.
 - **`llm_resolve.py` does NOT work in cron/background context** — The script calls `hermes ask --no-stream` via subprocess, which returns no output when there is no interactive session.
