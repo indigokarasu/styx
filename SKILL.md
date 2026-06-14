@@ -75,8 +75,10 @@ Styx maintains its own SQLite database at `/root/.hermes/data/styx.db`.
 **IMPORTANT:** Hardcode this path. Do NOT use `{agent_root}` — it resolves to the indigo profile home, not the shared data directory.
 
 The active DBs are:
-- `/root/.hermes/data/transactions.db` — raw Plaid transaction data
-- `/root/.hermes/data/styx.db` — enriched merchant data
+- `/root/.hermes/data/transactions.db` — raw Plaid transaction data (889 transactions, last: 2026-05-20)
+- `/root/.hermes/data/styx.db` — enriched merchant data (895 transaction_merchants, 366 merchants, all enriched as of 2026-06-13)
+
+**Note:** No new transactions have been synced since May 20, 2026. The Plaid sync cron may not be running or the bank link may need re-auth.
 
 A second copy exists at `/root/.hermes/commons/data/ocas-styx/styx.db` but it is a stale 0-byte stub — ignore it.
 
@@ -104,10 +106,13 @@ The **default script only enriches food merchants**. For full coverage, use the
 
 ```bash
 # Universal enrichment — all non-financial categories
-python3 /root/.hermes/commons/data/ocas-styx/styx_universal_enrich.py
+# NOTE: As of 2026-06-13, styx_universal_enrich.py does NOT exist on disk.
+# Only the food-only script is available. Create the universal script from
+# references/styx_universal_enrichment.md if needed.
+# Last known path (may not exist): /root/.hermes/commons/data/ocas-styx/styx_universal_enrich.py
 
-# Food-only (original script)
-python3 /root/.hermes/skills/ocas-styx/scripts/styx_places_enrich.py --all
+# Food-only (original script) — confirmed working
+python3 /root/.hermes/profiles/indigo/skills/ocas-styx/scripts/styx_places_enrich.py --all
 ```
 
 **Categories covered by universal script:** retail, service, entertainment, transport,
@@ -198,6 +203,8 @@ Sands reads from Styx for calendar-based spending context.
 - **styx.db may exist with no tables** — The DB file can be created empty (0 bytes) by the skill initialization script without the schema being applied. Before any receipt parsing or enrichment, verify tables exist.
 - **`llm_resolve.py` does NOT work in cron/background context** — The script calls `hermes ask --no-stream` via subprocess, which returns no output when there is no interactive session.
 - **styx_places_enrich.py is food-only** — The original enrichment script only covers food/restaurant categories. Use `styx_universal_enrich.py` for all categories. See `references/styx_universal_enrichment.md`.
+- **styx_universal_enrich.py does not exist on disk (as of 2026-06-13)** — The universal enrichment script referenced in this skill has not been created. Only `styx_places_enrich.py` (food-only) exists at `/root/.hermes/profiles/indigo/skills/ocas-styx/scripts/`. All 895 transaction_merchants are already enriched, so this hasn't blocked operations, but non-food categories won't get Google Places enrichment until the script is built.
+- **Correct script path for food-only enrichment** — The food-only script lives at `/root/.hermes/profiles/indigo/skills/ocas-styx/scripts/styx_places_enrich.py`, NOT at `/root/.hermes/skills/ocas-styx/scripts/styx_places_enrich.py` (that path doesn't exist).
 
 ## Post-enrichment verification
 
