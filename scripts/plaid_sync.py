@@ -6,72 +6,14 @@ Run daily via cron.
 """
 
 import json
-import os
 import sqlite3
 import sys
 import time
-import urllib.request
-import urllib.error
-from pathlib import Path
 
-def load_env(path):
-    env = {}
-    with open(path) as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith('#') and '=' in line:
-                k, v = line.split('=', 1)
-                env[k.strip()] = v.strip()
-    return env
+sys.path.insert(0, __import__('os').path.dirname(__file__))
+from styx_common import load_env, plaid_post, store_transaction
 
-env = load_env('/root/.hermes/secrets/plaid.env')
-CLIENT_ID = env['PLAID_CLIENT_ID']
-SECRET = env['PLAID_SECRET']
-BASE_URL = 'https://production.plaid.com'
 DB_PATH = '/root/.hermes/data/transactions.db'
-
-def plaid_post(endpoint, payload):
-    payload['client_id'] = CLIENT_ID
-    payload['secret'] = SECRET
-    data = json.dumps(payload).encode()
-    req = urllib.request.Request(BASE_URL + endpoint, data=data,
-                                  headers={'Content-Type': 'application/json'})
-    try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            return json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        body = e.read().decode()
-        return {'error': f'HTTP {e.code}: {body}'}
-
-def store_transaction(conn, tx, account_id):
-    """Upsert a single transaction."""
-    try:
-        conn.execute(
-            '''INSERT OR REPLACE INTO transactions
-            (account_id, transaction_id, amount, currency, date, authorized_date,
-             name, merchant_name, category, category_id, pending, payment_channel,
-             personal_finance_category)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-            (
-                account_id,
-                tx.get('transaction_id'),
-                tx.get('amount'),
-                tx.get('iso_currency_code', 'USD'),
-                tx.get('date'),
-                tx.get('authorized_date'),
-                tx.get('name'),
-                tx.get('merchant_name'),
-                json.dumps(tx.get('category')) if tx.get('category') else None,
-                tx.get('category_id'),
-                1 if tx.get('pending') else 0,
-                tx.get('payment_channel'),
-                tx.get('personal_finance_category', {}).get('primary') if tx.get('personal_finance_category') else None,
-            )
-        )
-        return True
-    except Exception as e:
-        print(f"  Error storing tx {tx.get('transaction_id')}: {e}", file=sys.stderr)
-        return False
 
 def sync_item(conn, item_id, access_token, institution_name):
     """Sync transactions for a single item using cursor-based pagination."""
