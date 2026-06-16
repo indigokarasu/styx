@@ -2,42 +2,19 @@
 """Re-pull redacted transactions from Plaid and update the database."""
 
 import json
-import os
 import sqlite3
 import sys
 import urllib.request
 import urllib.error
 
-# Load credentials
-env = {}
-with open('/root/.hermes/secrets/plaid.env') as f:
-    for line in f:
-        line = line.strip()
-        if line and not line.startswith('#') and '=' in line:
-            k, v = line.split('=', 1)
-            env[k.strip()] = v.strip()
+sys.path.insert(0, __import__('os').path.dirname(__file__))
+from styx_common import load_env, plaid_post
 
-CLIENT_ID = env['PLAID_CLIENT_ID']
-SECRET = env['PLAID_SECRET']
-BASE_URL = 'https://production.plaid.com'
 TXN_DB = '/root/.hermes/data/transactions.db'
-
-def plaid_post(endpoint, payload):
-    payload['client_id'] = CLIENT_ID
-    payload['secret'] = SECRET
-    data = json.dumps(payload).encode()
-    req = urllib.request.Request(BASE_URL + endpoint, data=data,
-                                  headers={'Content-Type': 'application/json'})
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            return json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        body = e.read().decode()
-        return {'error': f'HTTP {e.code}: {body}'}
 
 def main():
     txn_conn = sqlite3.connect(TXN_DB)
-    
+
     # Get redacted transaction IDs and dates
     redacted = txn_conn.execute('''
         SELECT transaction_id, date, amount
@@ -45,12 +22,12 @@ def main():
         WHERE name LIKE '%*%' AND merchant_name IS NULL
         ORDER BY date DESC
     ''').fetchall()
-    
+
     print(f"Found {len(redacted)} redacted transactions")
-    
+
     # Get all access tokens
     tokens = txn_conn.execute('SELECT access_token FROM plaid_items').fetchall()
-    
+
     # For each token, pull recent transactions
     updates = []
     for (token,) in tokens:
@@ -60,17 +37,17 @@ def main():
             'end_date': '2026-05-21',
             'options': {'count': 500, 'offset': 0}
         })
-        
+
         if 'error' in result:
             print(f"Error: {result['error'][:100]}")
             continue
-        
+
         txns = result.get('transactions', [])
         for t in txns:
             name = t.get('name', '')
             merchant = t.get('merchant_name', '')
             txn_id = t['transaction_id']
-            
+
             # Check if this transaction ID is in our redacted list
             for red_id, red_date, red_amount in redacted:
                 if txn_id == red_id:
@@ -80,7 +57,7 @@ def main():
                         updates.append((txn_id, name, merchant, red_date, red_amount))
                     else:
                         print(f"  STILL REDACTED: {red_date} ${red_amount} (name: '{name}', merchant: '{merchant}')")
-    
+
     if updates:
         print(f"\nUpdating {len(updates)} transactions...")
         for txn_id, name, merchant, date, amount in updates:
@@ -92,19 +69,19 @@ def main():
         print("Done!")
     else:
         print("\nNo new data available from Plaid for redacted transactions.")
-    
+
     # Show remaining redacted
     remaining = txn_conn.execute('''
         SELECT date, amount, name FROM transactions
         WHERE name LIKE '%*%' AND merchant_name IS NULL
         ORDER BY date DESC
     ''').fetchall()
-    
+
     if remaining:
         print(f"\n{len(remaining)} still redacted:")
         for date, amount, name in remaining:
             print(f"  {date}  ${amount:>8.2f}  {name}")
-    
+
     txn_conn.close()
 
 if __name__ == '__main__':

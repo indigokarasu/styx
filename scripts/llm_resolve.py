@@ -17,27 +17,10 @@ import time
 import subprocess
 from pathlib import Path
 
-STYX_DB = '/root/.hermes/data/styx.db'
+sys.path.insert(0, __import__('os').path.dirname(__file__))
+from styx_common import CATEGORY_MAP, init_styx_db, get_or_create_merchant, link_transaction
 
-CATEGORY_MAP = {
-    'FOOD_AND_DRINK': 'restaurant',
-    'GENERAL_MERCHANDISE': 'retail',
-    'TRANSPORTATION': 'transport',
-    'GENERAL_SERVICES': 'service',
-    'ENTERTAINMENT': 'entertainment',
-    'MEDICAL': 'medical',
-    'HOME_IMPROVEMENT': 'home',
-    'LOAN_PAYMENTS': 'finance',
-    'PERSONAL_CARE': 'personal_care',
-    'TRANSFER_OUT': 'transfer',
-    'INCOME': 'income',
-    'BANK_FEES': 'finance',
-    'GOVERNMENT_AND_NON_PROFIT': 'government',
-    'TRANSFER_IN': 'transfer',
-    'RENT_AND_UTILITIES': 'housing',
-    'LOAN_DISBURSEMENTS': 'finance',
-    'TRAVEL': 'travel',
-}
+STYX_DB = '/root/.hermes/data/styx.db'
 
 def resolve_via_llm(prompt):
     """Send a resolution prompt to the LLM via hermes CLI.
@@ -70,13 +53,19 @@ def resolve_via_llm(prompt):
         # hermes CLI not available — return None
         return None, 0.0
 
+def normalize_for_db(name):
+    """Normalize a name for database storage."""
+    norm = name.lower()
+    norm = ''.join(c for c in norm if c.isalnum() or c == ' ')
+    return ' '.join(norm.split())
+
 def process_queue(input_file, batch_size=20):
     """Process LLM resolution queue."""
     if not os.path.exists(input_file):
         print(f"Input file not found: {input_file}")
         return
 
-    styx_conn = sqlite3.connect(STYX_DB)
+    styx_conn = init_styx_db(STYX_DB)
 
     items = []
     with open(input_file) as f:
@@ -102,9 +91,7 @@ def process_queue(input_file, batch_size=20):
 
         if business_name and confidence > 0.5:
             cat = CATEGORY_MAP.get(item.get('personal_finance_category', ''), 'other')
-            norm = business_name.lower()
-            norm = ''.join(c for c in norm if c.isalnum() or c == ' ')
-            norm = ' '.join(norm.split())
+            norm = normalize_for_db(business_name)
 
             # Get or create merchant
             row = styx_conn.execute(

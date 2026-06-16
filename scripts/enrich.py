@@ -20,6 +20,9 @@ import urllib.error
 from pathlib import Path
 from difflib import SequenceMatcher
 
+sys.path.insert(0, __import__('os').path.dirname(__file__))
+from styx_common import CATEGORY_MAP, normalize, is_redacted, init_styx_db, get_or_create_merchant, link_transaction
+
 STYX_DB = '/root/.hermes/data/styx.db'
 TXN_DB = '/root/.hermes/data/transactions.db'
 REVIEW_QUEUE = '/root/.hermes/data/styx/review_queue.jsonl'
@@ -65,18 +68,6 @@ def clean_name(name):
     cleaned = cleaned.strip()
     return cleaned
 
-def is_redacted(name):
-    """Check if a name is too redacted to be useful."""
-    if not name:
-        return True
-    if re.search(r'^\*+$', name.strip()):
-        return True
-    # Count asterisks — if more than 30% of chars are asterisks, it's redacted
-    asterisks = name.count('*')
-    if asterisks > 0 and asterisks / len(name) > 0.3:
-        return True
-    return False
-
 def extract_base_name(name):
     """Extract the recognizable base from a redacted name like 'UNITED **************'."""
     if not name:
@@ -85,63 +76,6 @@ def extract_base_name(name):
     parts = re.split(r'\*+', name)
     base = parts[0].strip() if parts else ''
     return base
-
-def normalize(name):
-    """Normalize a name for matching: lowercase, strip punctuation, collapse spaces."""
-    if not name:
-        return ''
-    n = name.lower()
-    n = re.sub(r'[^a-z0-9\s]', '', n)
-    n = re.sub(r'\s+', ' ', n).strip()
-    return n
-
-# ── Database setup ───────────────────────────────────────────────────────────
-
-def init_styx_db():
-    os.makedirs(os.path.dirname(STYX_DB), exist_ok=True)
-    conn = sqlite3.connect(STYX_DB)
-    conn.execute('''CREATE TABLE IF NOT EXISTS merchants (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        normalized_name TEXT NOT NULL,
-        category TEXT,
-        subcategory TEXT,
-        address TEXT,
-        city TEXT,
-        state TEXT,
-        zip TEXT,
-        phone TEXT,
-        website TEXT,
-        source TEXT,
-        confidence REAL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(normalized_name)
-    )''')
-    conn.execute('''CREATE TABLE IF NOT EXISTS transaction_merchants (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        transaction_id TEXT NOT NULL,
-        merchant_id INTEGER NOT NULL,
-        raw_name TEXT NOT NULL,
-        match_method TEXT,
-        confidence REAL,
-        is_primary INTEGER DEFAULT 1,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (merchant_id) REFERENCES merchants(id),
-        UNIQUE(transaction_id, merchant_id)
-    )''')
-    conn.execute('''CREATE TABLE IF NOT EXISTS enrichment_runs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        started_at TIMESTAMP,
-        completed_at TIMESTAMP,
-        transactions_processed INTEGER DEFAULT 0,
-        merchants_found INTEGER DEFAULT 0,
-        merchants_created INTEGER DEFAULT 0,
-        status TEXT DEFAULT 'running',
-        error TEXT
-    )''')
-    conn.commit()
-    return conn
 
 # ── Stage 1: Exact match ────────────────────────────────────────────────────
 
@@ -278,57 +212,11 @@ Business name:"""
 
     return prompt
 
-# ── Merchant management ──────────────────────────────────────────────────────
-
-def get_or_create_merchant(conn, name, category=None, source='enrichment', confidence=0.8):
-    """Get existing merchant or create a new one."""
-    norm = normalize(name)
-    row = conn.execute('SELECT id FROM merchants WHERE normalized_name = ?', (norm,)).fetchone()
-    if row:
-        return row[0], False  # existed
-
-    cur = conn.execute(
-        'INSERT INTO merchants (name, normalized_name, category, source, confidence) VALUES (?, ?, ?, ?, ?)',
-        (name, norm, category, source, confidence)
-    )
-    return cur.lastrowid, True  # created
-
-def link_transaction(conn, transaction_id, merchant_id, raw_name, method, confidence):
-    """Create a transaction-merchant link."""
-    conn.execute(
-        '''INSERT OR REPLACE INTO transaction_merchants
-        (transaction_id, merchant_id, raw_name, match_method, confidence, is_primary)
-        VALUES (?, ?, ?, ?, ?, 1)''',
-        (transaction_id, merchant_id, raw_name, method, confidence)
-    )
-
-# ── Category mapping ────────────────────────────────────────────────────────
-
-CATEGORY_MAP = {
-    'FOOD_AND_DRINK': 'restaurant',
-    'GENERAL_MERCHANDISE': 'retail',
-    'TRANSPORTATION': 'transport',
-    'GENERAL_SERVICES': 'service',
-    'ENTERTAINMENT': 'entertainment',
-    'MEDICAL': 'medical',
-    'HOME_IMPROVEMENT': 'home',
-    'LOAN_PAYMENTS': 'finance',
-    'PERSONAL_CARE': 'personal_care',
-    'TRANSFER_OUT': 'transfer',
-    'INCOME': 'income',
-    'BANK_FEES': 'finance',
-    'GOVERNMENT_AND_NON_PROFIT': 'government',
-    'TRANSFER_IN': 'transfer',
-    'RENT_AND_UTILITIES': 'housing',
-    'LOAN_DISBURSEMENTS': 'finance',
-    'TRAVEL': 'travel',
-}
-
 # ── Main enrichment ──────────────────────────────────────────────────────────
 
 def enrich_transactions(dry_run=False, use_llm=True):
     """Run the full enrichment pipeline on all unenriched transactions."""
-    styx_conn = init_styx_db()
+    styx_conn = init_styx_db(STYX_DB)
     txn_conn = sqlite3.connect(TXN_DB)
 
     # Start enrichment run

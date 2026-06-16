@@ -1,22 +1,14 @@
 #!/usr/bin/env python3
 """
 Styx Descriptor Parser — resolves garbled credit card transaction names into
-real business names using libpostal, prefix dictionaries, regex cleaning,
-and Photon geocoder.
-
-This is the core non-OSS component of the Styx enrichment pipeline.
+real business names using prefix dictionaries and regex cleaning.
 
 Usage:
-    from styx_parser import parse_descriptor, resolve_merchant
+    from styx_parser import parse_descriptor, lookup_mcc
 
     result = parse_descriptor("ABM-350 MISSION GARAGE")
-    # {'raw': 'ABM-350 MISSION GARAGE', 'cleaned': 'MISSION GARAGE',
-    #  'prefix': 'ABM', 'suffix': '350', 'confidence': 0.9}
-
-    merchant = resolve_merchant("MISSION GARAGE", amount=25.00,
-                                 category="TRANSPORTATION")
-    # {'name': 'Mission Garage', 'category': 'parking',
-    #  'confidence': 0.85, 'source': 'photon'}
+    # {'raw': 'ABM-350 MISSION GARAGE', 'cleaned': 'Mission Garage',
+    #  'prefix': 'ABM', 'suffix': '350', 'confidence': 0.7, 'method': 'prefix_stripped'}
 """
 
 import json
@@ -76,7 +68,6 @@ PREFIX_DICT = {
     "ABC": "",           # American Business Card — strip
     "POS": "POS",        # Point of Sale — keep
     "POSH": "Poshmark",  # Poshmark
-    "AMZN": "Amazon",    # Amazon
     "TGT": "Target",     # Target
     "WMT": "Walmart",    # Walmart
     "COSTCO": "Costco",  # Costco
@@ -117,8 +108,6 @@ PREFIX_DICT = {
     "DELIVEROO": "Deliveroo",
     "JUSTEAT": "Just Eat",
     "TAKEAWAY": "Takeaway",
-    "UBER": "Uber",
-    "LYFT": "Lyft",
     "BIRD": "Bird",
     "LIME": "Lime",
     "SPIN": "Spin",
@@ -176,7 +165,6 @@ PREFIX_DICT = {
     "CHALLENGER": "Challenger",
     "VIPER": "Viper",
     "DURANGO": "Durango",
-    "RAM": "Ram",
     "F150": "F-150",
     "SILVERADO": "Silverado",
     "SIERRA": "Sierra",
@@ -184,7 +172,6 @@ PREFIX_DICT = {
     "COLORADO": "Colorado",
     "TACOMA": "Tacoma",
     "TUNDRA": "Tundra",
-    "FRONTIER": "Frontier",
     "PATHFINDER": "Pathfinder",
     "ROGUE": "Rogue",
     "MURANO": "Murano",
@@ -193,7 +180,6 @@ PREFIX_DICT = {
     "SENTRA": "Sentra",
     "VERSA": "Versa",
     "LEAF": "Leaf",
-    "ROGUE": "Rogue",
     "OUTBACK": "Outback",
     "FORESTER": "Forester",
     "CROSSTREK": "Crosstrek",
@@ -202,7 +188,6 @@ PREFIX_DICT = {
     "STI": "STI",
     "LEGACY": "Legacy",
     "BRZ": "BRZ",
-    "WRX": "WRX",
     "MIRAGE": "Mirage",
     "LANCER": "Lancer",
     "ECLIPSE": "Eclipse",
@@ -210,7 +195,6 @@ PREFIX_DICT = {
     "MONTERO": "Montero",
     "OUTLANDER": "Outlander",
     "ASX": "ASX",
-    "ECLIPSE": "Eclipse",
     "CROSS": "Cross",
     "RAV4": "RAV4",
     "HIGHLANDER": "Highlander",
@@ -236,23 +220,7 @@ PREFIX_DICT = {
     "LC": "LC",
     "CT": "CT",
     "HS": "HS",
-    "GS": "GS",
     "SC": "SC",
-    "LFA": "LFA",
-    "RC": "RC",
-    "IS": "IS",
-    "ES": "ES",
-    "LS": "LS",
-    "GS": "GS",
-    "SC": "SC",
-    "CT": "CT",
-    "HS": "HS",
-    "NX": "NX",
-    "RX": "RX",
-    "GX": "GX",
-    "LX": "LX",
-    "LC": "LC",
-    "RC": "RC",
     "LFA": "LFA",
 }
 
@@ -275,64 +243,6 @@ ASTERISK_RE = re.compile(r'\*+')
 
 # Multiple spaces
 MULTI_SPACE_RE = re.compile(r'\s+')
-
-# ── libpostal integration ────────────────────────────────────────────────────
-
-def normalize_address(text):
-    """Use libpostal to normalize an address string."""
-    try:
-        from postal.expand import expand_address
-        expanded = expand_address(text)
-        return expanded[0] if expanded else text
-    except Exception:
-        return text
-
-def parse_address(text):
-    """Use libpostal to parse an address into components."""
-    try:
-        from postal.parser import parse_address as _parse
-        return _parse(text)
-    except Exception:
-        return []
-
-# ── Photon geocoder ──────────────────────────────────────────────────────────
-
-def get_photon_url():
-    """Get Photon URL from environment or default."""
-    return os.environ.get('PHOTON_URL', 'http://localhost:2322')
-
-def photon_search(query, limit=5, city=None, country='US'):
-    """Search for a business via Photon geocoder."""
-    url = get_photon_url()
-    params = {
-        'q': query,
-        'limit': limit,
-        'lang': 'en',
-    }
-    if city:
-        params['city'] = city
-    if country:
-        params['country'] = country
-
-    param_str = '&'.join(f'{k}={urllib.parse.quote(str(v))}' for k, v in params.items())
-    try:
-        req = urllib.request.Request(f'{url}/api?{param_str}')
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read())
-            return data.get('features', [])
-    except Exception as e:
-        return []
-
-def photon_reverse(lat, lon, radius=100):
-    """Reverse geocode via Photon."""
-    url = get_photon_url()
-    try:
-        req = urllib.request.Request(f'{url}/reverse?lat={lat}&lon={lon}&radius={radius}')
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read())
-            return data.get('features', [])
-    except Exception:
-        return []
 
 # ── MCC lookup ───────────────────────────────────────────────────────────────
 
@@ -658,93 +568,6 @@ def parse_descriptor(raw_name):
     return result
 
 
-def resolve_merchant(cleaned_name, amount=None, category=None, city="San Francisco"):
-    """Resolve a cleaned merchant name to a real business entity.
-
-    Uses Photon geocoder to find the business.
-    Falls back to libpostal normalization + fuzzy matching.
-
-    Returns a dict with:
-        - name: canonical business name
-        - category: business category
-        - address: street address
-        - city: city
-        - confidence: 0.0-1.0
-        - source: 'photon', 'libpostal', 'mcc', or 'unknown'
-    """
-    if not cleaned_name or len(cleaned_name) < 2:
-        return {'name': cleaned_name, 'category': None, 'confidence': 0.0, 'source': 'unknown'}
-
-    # Try Photon search
-    photon_results = photon_search(cleaned_name, limit=5, city=city)
-    if photon_results:
-        best = photon_results[0]
-        props = best.get('properties', {})
-        geom = best.get('geometry', {}).get('coordinates', [0, 0])
-
-        return {
-            'name': props.get('name', cleaned_name),
-            'category': props.get('category', category),
-            'address': props.get('street', ''),
-            'city': props.get('city', city),
-            'state': props.get('state', ''),
-            'postcode': props.get('postcode', ''),
-            'country': props.get('country', 'US'),
-            'osm_id': props.get('osm_id', ''),
-            'confidence': 0.85,
-            'source': 'photon',
-        }
-
-    # Fallback: libpostal normalization
-    normalized = normalize_address(cleaned_name)
-    if normalized and normalized != cleaned_name:
-        return {
-            'name': cleaned_name,
-            'category': category,
-            'confidence': 0.5,
-            'source': 'libpostal',
-        }
-
-    return {
-        'name': cleaned_name,
-        'category': category,
-        'confidence': 0.3,
-        'source': 'unknown',
-    }
-
-
-def full_resolve(raw_name, amount=None, category=None, mcc=None, city="San Francisco"):
-    """Full resolution pipeline for a single transaction.
-
-    Combines parse_descriptor → resolve_merchant into a single call.
-    """
-    # Step 1: Parse the descriptor
-    parsed = parse_descriptor(raw_name)
-
-    # Step 2: Try MCC lookup if available
-    if mcc:
-        mcc_category = lookup_mcc(mcc)
-        if mcc_category:
-            parsed['mcc_category'] = mcc_category
-
-    # Step 3: Resolve the merchant
-    merchant = resolve_merchant(
-        parsed['cleaned'],
-        amount=amount,
-        category=category,
-        city=city,
-    )
-
-    # Step 4: Combine results
-    return {
-        'raw_name': raw_name,
-        'parsed': parsed,
-        'merchant': merchant,
-        'confidence': min(parsed['confidence'], merchant['confidence']),
-        'needs_review': parsed['confidence'] < 0.5 or merchant['confidence'] < 0.5,
-    }
-
-
 # ── CLI ──────────────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
@@ -757,40 +580,15 @@ if __name__ == '__main__':
     parse_parser = subparsers.add_parser('parse', help='Parse a transaction descriptor')
     parse_parser.add_argument('descriptor', help='Transaction descriptor to parse')
 
-    # Resolve command
-    resolve_parser = subparsers.add_parser('resolve', help='Resolve a merchant name')
-    resolve_parser.add_argument('name', help='Merchant name to resolve')
-    resolve_parser.add_argument('--amount', type=float, help='Transaction amount')
-    resolve_parser.add_argument('--category', help='Transaction category')
-    resolve_parser.add_argument('--city', default='San Francisco', help='City for geocoding')
-
-    # Full resolve command
-    full_parser = subparsers.add_parser('full', help='Full resolution pipeline')
-    full_parser.add_argument('descriptor', help='Transaction descriptor')
-    full_parser.add_argument('--amount', type=float, help='Transaction amount')
-    full_parser.add_argument('--category', help='Transaction category')
-    full_parser.add_argument('--mcc', help='Merchant Category Code')
-    full_parser.add_argument('--city', default='San Francisco', help='City for geocoding')
-
     # Batch command
     batch_parser = subparsers.add_parser('batch', help='Batch process from Styx DB')
     batch_parser.add_argument('--limit', type=int, default=50, help='Max to process')
-    batch_parser.add_argument('--city', default='San Francisco', help='City for geocoding')
+    batch_parser.add_argument('--city', default='San Francisco', help='City (for display only)')
 
     args = parser.parse_args()
 
     if args.command == 'parse':
         result = parse_descriptor(args.descriptor)
-        print(json.dumps(result, indent=2))
-
-    elif args.command == 'resolve':
-        result = resolve_merchant(args.name, amount=args.amount,
-                                   category=args.category, city=args.city)
-        print(json.dumps(result, indent=2))
-
-    elif args.command == 'full':
-        result = full_resolve(args.descriptor, amount=args.amount,
-                               category=args.category, mcc=args.mcc, city=args.city)
         print(json.dumps(result, indent=2))
 
     elif args.command == 'batch':
@@ -813,10 +611,10 @@ if __name__ == '__main__':
         print(f"Processing {len(rows)} unresolved transactions...")
         for txn_id, name, merchant_name, amount, date, pfc in rows:
             raw = name or merchant_name or ''
-            result = full_resolve(raw, amount=amount, category=pfc, city=args.city)
-            status = "✓" if not result['needs_review'] else "?"
-            print(f"  {status} {raw[:40]:40s} → {result['merchant']['name'][:30]:30s} "
-                  f"(conf: {result['confidence']:.2f}, src: {result['merchant']['source']})")
+            result = parse_descriptor(raw)
+            status = "✓" if result['confidence'] >= 0.5 else "?"
+            print(f"  {status} {raw[:40]:40s} → {result['cleaned'][:30]:30s} "
+                  f"(conf: {result['confidence']:.2f}, method: {result['method']})")
 
         conn.close()
 

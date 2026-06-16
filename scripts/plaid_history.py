@@ -2,44 +2,17 @@
 """Pull full transaction history for all connected Plaid items."""
 
 import json
-import os
 import sqlite3
 import sys
 import time
 import urllib.request
 import urllib.error
 from datetime import datetime, timedelta
-from pathlib import Path
 
-# Load credentials
-def load_env(path):
-    env = {}
-    with open(path) as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith('#') and '=' in line:
-                k, v = line.split('=', 1)
-                env[k.strip()] = v.strip()
-    return env
+sys.path.insert(0, __import__('os').path.dirname(__file__))
+from styx_common import load_env, plaid_post, store_transaction
 
-env = load_env('/root/.hermes/secrets/plaid.env')
-CLIENT_ID = env['PLAID_CLIENT_ID']
-SECRET = env['PLAID_SECRET']
-BASE_URL = 'https://production.plaid.com'
 DB_PATH = '/root/.hermes/data/transactions.db'
-
-def plaid_post(endpoint, payload):
-    payload['client_id'] = CLIENT_ID
-    payload['secret'] = SECRET
-    data = json.dumps(payload).encode()
-    req = urllib.request.Request(BASE_URL + endpoint, data=data,
-                                  headers={'Content-Type': 'application/json'})
-    try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            return json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        body = e.read().decode()
-        return {'error': f'HTTP {e.code}: {body}'}
 
 def pull_transactions(access_token, account_ids, start_date, end_date):
     """Pull all transactions for given accounts using pagination."""
@@ -82,35 +55,9 @@ def store_transactions(conn, transactions):
     inserted = 0
     skipped = 0
     for tx in transactions:
-        try:
-            conn.execute(
-                '''INSERT OR IGNORE INTO transactions
-                (account_id, transaction_id, amount, currency, date, authorized_date,
-                 name, merchant_name, category, category_id, pending, payment_channel,
-                 personal_finance_category)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                (
-                    tx.get('account_id'),
-                    tx.get('transaction_id'),
-                    tx.get('amount'),
-                    tx.get('iso_currency_code', 'USD'),
-                    tx.get('date'),
-                    tx.get('authorized_date'),
-                    tx.get('name'),
-                    tx.get('merchant_name'),
-                    json.dumps(tx.get('category')) if tx.get('category') else None,
-                    tx.get('category_id'),
-                    1 if tx.get('pending') else 0,
-                    tx.get('payment_channel'),
-                    tx.get('personal_finance_category', {}).get('primary') if tx.get('personal_finance_category') else None,
-                )
-            )
-            if conn.total_changes:
-                inserted += 1
-            else:
-                skipped += 1
-        except Exception as e:
-            print(f"  Skipped tx {tx.get('transaction_id')}: {e}", file=sys.stderr)
+        if store_transaction(conn, tx, tx.get('account_id')):
+            inserted += 1
+        else:
             skipped += 1
     conn.commit()
     return inserted, skipped
