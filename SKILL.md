@@ -75,10 +75,10 @@ Styx maintains its own SQLite database at `/root/.hermes/data/styx.db`.
 **IMPORTANT:** Hardcode this path. Do NOT use `{agent_root}` — it resolves to the indigo profile home, not the shared data directory.
 
 The active DBs are:
-- `/root/.hermes/data/transactions.db` — raw Plaid transaction data (889 transactions, last: 2026-05-20)
-- `/root/.hermes/data/styx.db` — enriched merchant data (895 transaction_merchants, 366 merchants, all enriched as of 2026-06-13)
+- `/root/.hermes/data/transactions.db` — raw Plaid transaction data (1,055 transactions, last: 2026-06-13)
+- `/root/.hermes/data/styx.db` — enriched merchant data (1,056 transaction_merchants, 460 merchants, all enriched as of 2026-06-15)
 
-**Note:** No new transactions have been synced since May 20, 2026. The Plaid sync cron may not be running or the bank link may need re-auth.
+**Note:** Plaid sync cron runs daily at 7 AM but no new transactions have appeared since 2026-06-13. The bank link may need re-auth or simply has no new activity.
 
 A second copy exists at `/root/.hermes/commons/data/ocas-styx/styx.db` but it is a stale 0-byte stub — ignore it.
 
