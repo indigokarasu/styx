@@ -106,8 +106,8 @@ The **default script only enriches food merchants**. For full coverage, use the
 
 ```bash
 # Universal enrichment — all non-financial categories
-# NOTE: As of 2026-06-13, styx_universal_enrich.py does NOT exist on disk.
-# Only the food-only script is available. Create the universal script from
+# Created 2026-06-20. Script exists at:
+# /root/.hermes/profiles/indigo/skills/ocas-styx/scripts/styx_universal_enrich.py
 # references/styx_universal_enrichment.md if needed.
 # Last known path (may not exist): /root/.hermes/commons/data/ocas-styx/styx_universal_enrich.py
 
@@ -203,7 +203,7 @@ Sands reads from Styx for calendar-based spending context.
 - **styx.db may exist with no tables** — The DB file can be created empty (0 bytes) by the skill initialization script without the schema being applied. Before any receipt parsing or enrichment, verify tables exist.
 - **`llm_resolve.py` does NOT work in cron/background context** — The script calls `hermes ask --no-stream` via subprocess, which returns no output when there is no interactive session.
 - **styx_places_enrich.py is food-only** — The original enrichment script only covers food/restaurant categories. Use `styx_universal_enrich.py` for all categories. See `references/styx_universal_enrichment.md`.
-- **styx_universal_enrich.py does not exist on disk (as of 2026-06-13)** — The universal enrichment script referenced in this skill has not been created. Only `styx_places_enrich.py` (food-only) exists at `/root/.hermes/profiles/indigo/skills/ocas-styx/scripts/`. All 895 transaction_merchants are already enriched, so this hasn't blocked operations, but non-food categories won't get Google Places enrichment until the script is built.
+- **styx_universal_enrich.py created 2026-06-20** — Now exists at `/root/.hermes/profiles/indigo/skills/ocas-styx/scripts/styx_universal_enrich.py`. Covers retail, service, entertainment, transport, personal_care, medical, home, government, housing, travel. Skips financial categories (transfer, income, bank_fees, loan_payments, loan_disbursements). Run: `python3 styx_universal_enrich.py --limit 0` to enrich all pending non-food merchants. Includes name cleaning (strips FSP*, SP , ABM-, etc.) and international address parsing (UK postcodes, city-only addresses).
 - **Correct script path for food-only enrichment** — The food-only script lives at `/root/.hermes/profiles/indigo/skills/ocas-styx/scripts/styx_places_enrich.py`, NOT at `/root/.hermes/skills/ocas-styx/scripts/styx_places_enrich.py` (that path doesn't exist).
 
 ## Post-enrichment verification

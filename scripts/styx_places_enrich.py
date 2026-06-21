@@ -15,12 +15,59 @@ Usage:
 
 import json
 import os
+import re
 import sqlite3
 import sys
 import time
 import urllib.request
 import urllib.error
 from pathlib import Path
+
+
+def parse_formatted_address(addr):
+    """
+    Parse Google Places formattedAddress → (city, state_or_region, postcode).
+
+    US:  '525 Market St, San Francisco, CA 94105, USA'  → ('San Francisco', 'CA', '94105')
+    UK:  '92 Station Rd., Soham, ELY CB7 5DZ, UK'      → ('Soham', 'UK', 'CB7 5DZ')
+    City-only: 'Berkeley, CA, USA'                       → ('Berkeley', 'CA', None)
+    """
+    if not addr:
+        return None, None, None
+    parts = [p.strip() for p in addr.split(",")]
+    if len(parts) < 2:
+        return None, None, None
+    # US with zip
+    for i, p in enumerate(parts):
+        m = re.match(r'^([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$', p)
+        if m and i >= 1:
+            city = parts[i - 1].strip()
+            if re.match(r'^[A-Za-z\s\.\-\']+$', city):
+                return city, m.group(1), m.group(2)
+    # US city-only: 'City, ST, USA'
+    if parts[-1] in ('USA', 'US') and len(parts) >= 3:
+        state_part = parts[-2].strip()
+        if re.match(r'^[A-Z]{2}$', state_part):
+            city = parts[-3].strip()
+            if re.match(r'^[A-Za-z\s\.\-\']+$', city):
+                return city, state_part, None
+    # UK
+    if parts[-1].strip() in ('UK', 'United Kingdom') and len(parts) >= 3:
+        region_postcode = parts[-2].strip()
+        uk_m = re.match(r'^(.+?)\s+([A-Z]{1,2}\d[\dA-Z]?\s*\d[A-Z]{2})$', region_postcode)
+        if uk_m and len(parts) >= 4:
+            city = parts[-3].strip()
+            return city, 'UK', uk_m.group(2).strip()
+        city = parts[-2].strip()
+        if re.match(r'^[A-Za-z\s\.\-\']+$', city):
+            return city, 'UK', None
+    # Generic international
+    country = parts[-1].strip()
+    if re.match(r'^[A-Za-z\s]+$', country) and len(parts) >= 2:
+        city = parts[-2].strip()
+        if re.match(r'^[A-Za-z\s\.\-\']+$', city) and city.lower() != country.lower():
+            return city, country, None
+    return None, None, None
 
 STYX_DB = '/root/.hermes/data/styx.db'
 TXN_DB = '/root/.hermes/data/transactions.db'
@@ -216,8 +263,8 @@ def main():
             # Update Styx merchant with enriched data
             cat = attrs['taste_categories'][0] if attrs['taste_categories'] else 'restaurant'
             styx_conn.execute(
-                "UPDATE merchants SET category = ?, address = ?, source = 'google_places', confidence = 0.9, updated_at = datetime('now') WHERE id = ?",
-                (cat, attrs['address'], mid)
+                "UPDATE merchants SET category = ?, address = ?, city = ?, state = ?, zip = ?, source = 'google_places', confidence = 0.9, updated_at = datetime('now') WHERE id = ?",
+                (cat, attrs['address'], *parse_formatted_address(attrs['address']), mid)
             )
 
             # Create Taste ItemRecord
