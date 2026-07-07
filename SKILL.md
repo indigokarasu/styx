@@ -1,13 +1,13 @@
 ---
+license: MIT
 name: ocas-styx
 description: Transaction data store with merchant enrichment. Provides a clean, queryable
   interface over raw bank transaction data. Enriches garbled/obfuscated transaction
   names into real business entities using SearXNG search plus LLM resolution. Includes
   financial sync (Plaid API) for pulling transactions and balances daily. Other skills
-  (Taste, Rally, Vesper, Corvus, Sands) read from Styx for consumption signals, spending
+  (Taste, Rally, Vesper, Sands) read from Styx for consumption signals, spending
   analysis, and pattern detection. NOT for creating transactions (use bank), budgeting
   strategy (use Rally), or email-based consumption scanning (use Taste).
-license: MIT
 source: https://github.com/indigokarasu/styx
 includes:
 - references/**
@@ -33,7 +33,7 @@ triggers:
 
 Styx is the system's transaction intelligence layer. It sits between raw bank
 data (from Plaid via financial-sync) and consumer skills that need clean
-merchant information (Taste, Rally, Vesper, Corvus, Sands).
+merchant information (Taste, Rally, Vesper, Sands).
 
 ## When to Use
 
@@ -42,7 +42,7 @@ merchant information (Taste, Rally, Vesper, Corvus, Sands).
 - Answering "what did I spend" or "where did I spend" questions
 - Pulling/syncing bank transactions via Plaid API
 - Spending analysis, pattern detection, or calendar-based spending context
-- Providing clean merchant data to consumer skills (Taste, Rally, Vesper, Corvus, Sands)
+- Providing clean merchant data to consumer skills (Taste, Rally, Vesper, Sands)
 - Parsing email receipts (e.g., Rainbow Grocery eReceipts) and storing line items in `receipt_line_items` table
 
 ## When NOT to Use
@@ -52,6 +52,17 @@ merchant information (Taste, Rally, Vesper, Corvus, Sands).
 - Creating or modifying transactions (use your bank directly)
 - General web research or non-transaction search (use Sift)
 - Account management (adding/removing bank links) — use Plaid Link flow directly
+
+## Workflow
+
+Styx operates a continuous ingest-enrich-serve workflow because raw transaction data requires normalization before it becomes useful to downstream skills.
+
+1. **Ingest** — Pull transactions from Plaid API (daily cron or on-demand)
+2. **Enrich** — Resolve garbled merchant names via SearXNG search + LLM resolution
+3. **Store** — Write enriched records to SQLite database
+4. **Serve** — Expose query API for consumer skills (Taste, Rally, Vesper, Sands)
+
+Example: a transaction from "UNK MERCHANT 1234" is enriched via SearXNG search → identified as "Whole Foods Market" → stored with clean merchant name → Taste queries for spending patterns.
 
 ## Core principles
 
@@ -75,10 +86,10 @@ Styx maintains its own SQLite database at `/root/.hermes/data/styx.db`.
 **IMPORTANT:** Hardcode this path. Do NOT use `{agent_root}` — it resolves to the indigo profile home, not the shared data directory.
 
 The active DBs are:
-- `/root/.hermes/data/transactions.db` — raw Plaid transaction data (1,055 transactions, last: 2026-06-13)
-- `/root/.hermes/data/styx.db` — enriched merchant data (1,056 transaction_merchants, 460 merchants, all enriched as of 2026-06-15)
+- `/root/.hermes/data/transactions.db` — raw Plaid transaction data (1,187 transactions, last: 2026-06-24)
+- `/root/.hermes/data/styx.db` — enriched merchant data (1,193 transaction_merchants links, 493 merchants)
 
-**Note:** Plaid sync cron runs daily at 7 AM but no new transactions have appeared since 2026-06-13. The bank link may need re-auth or simply has no new activity.
+**Note:** Plaid `/transactions/sync` cursor can get stuck and miss transactions. If `MAX(date)` is stale, use `/transactions/get` backfill pattern (see `references/plaid-sync-cursor-recovery.md`). Sync cursors reset after backfill.
 
 A second copy exists at `/root/.hermes/commons/data/ocas-styx/styx.db` but it is a stale 0-byte stub — ignore it.
 
@@ -162,9 +173,6 @@ Rally reads from Styx for spending analysis and budget tracking.
 ### Vesper
 Vesper reads from Styx for daily/weekly spending summaries in briefings.
 
-### Corvus
-Corvus reads from Styx for pattern detection in spending behavior.
-
 ### Sands
 Sands reads from Styx for calendar-based spending context.
 
@@ -181,13 +189,15 @@ Sands reads from Styx for calendar-based spending context.
 
 ## Gotchas
 
+Error handling in styx follows a strict never-modify-raw-data policy: if enrichment fails, log the error, mark the record as unresolved, and continue processing.
+
 - **Self-update: untracked files block `git pull`** — `git stash` only stashes tracked files. New (untracked) files in the skill directory will block the merge. Move them aside before pulling, then compare/restore afterward.
 - **Self-update: stash pop may conflict** — After pulling, `git stash pop` can produce merge conflicts if both the pulled changes and the stashed changes touch the same lines.
 - **`query.py --health-check` does not exist** — Use inline Python to verify DB integrity instead.
 - **Raw transaction data is sacred** — Styx never modifies or deletes records in `transactions.db`.
 - **Name cleaning is essential** — Plaid transaction names are heavily obfuscated (e.g., `DD *DOORDASH ROYALINDI`, `ABM-350 MISSION GARAGE`). Strip prefixes before matching.
 - **Redacted names can't be enriched** — Transactions with fully redacted names (`***************`) are skipped entirely.
-- **Consumer skills are read-only** — Taste, Rally, Vesper, Corvus, and Sands query Styx but must never write to Styx tables.
+- **Consumer skills are read-only** — Taste, Rally, Vesper, and Sands query Styx but must never write to Styx tables.
 - **receipt_line_items INSERT requires 22 values** — The table has 23 columns but `id` auto-increments.
 - **`google_auth_mcp` import path is profile-dependent** — When running under the `indigo` Hermes profile, `Path.home()` returns `/root/.hermes/profiles/indigo/home` instead of `/root`. Scripts that do `sys.path.insert(0, str(Path.home() / '.hermes' / 'scripts'))` or `sys.path.insert(0, str(AGENT_ROOT / 'scripts'))` will fail to find `google_auth_mcp.py`. **Fix:** Hardcode `sys.path.insert(0, str(Path('/root/.hermes/scripts')))` in any script that imports `google_auth_mcp`. **Affected scripts (all fixed as of 2026-06-04):** dispatch: `triage.py`, `check_unread.py`, `gmail_search.py`, `gmail_scan.py`; taste: `email_scan.py`, `run_historical_scans.py`; scripts: `email_check.py`, `dream_journal_pipeline.py`.
 - **Indigo's OAuth token file may lack `client_secret`** — The token file at `/root/.google_workspace_mcp/credentials/mx.indigo.karasu@gmail.com.json` may only have `access_token`, `refresh_token`, `client_id` — but `google_auth_mcp.py` needs `client_secret` for token refresh and a `token` key alias. **Fix:** Add `client_secret` from the cached client secret file. Also add `token` as an alias for `access_token` and `token_uri: 'https://oauth2.googleapis.com/token'`.
@@ -203,8 +213,36 @@ Sands reads from Styx for calendar-based spending context.
 - **styx.db may exist with no tables** — The DB file can be created empty (0 bytes) by the skill initialization script without the schema being applied. Before any receipt parsing or enrichment, verify tables exist.
 - **`llm_resolve.py` does NOT work in cron/background context** — The script calls `hermes ask --no-stream` via subprocess, which returns no output when there is no interactive session.
 - **styx_places_enrich.py is food-only** — The original enrichment script only covers food/restaurant categories. Use `styx_universal_enrich.py` for all categories. See `references/styx_universal_enrichment.md`.
+- **SearXNG port is 8888** — The `enrich.py` script defaults to `http://localhost:8888` (not 8880). If SearXNG errors with "Connection refused", verify the container port mapping: `docker ps | grep searx`.
 - **styx_universal_enrich.py created 2026-06-20** — Now exists at `/root/.hermes/profiles/indigo/skills/ocas-styx/scripts/styx_universal_enrich.py`. Covers retail, service, entertainment, transport, personal_care, medical, home, government, housing, travel. Skips financial categories (transfer, income, bank_fees, loan_payments, loan_disbursements). Run: `python3 styx_universal_enrich.py --limit 0` to enrich all pending non-food merchants. Includes name cleaning (strips FSP*, SP , ABM-, etc.) and international address parsing (UK postcodes, city-only addresses).
 - **Correct script path for food-only enrichment** — The food-only script lives at `/root/.hermes/profiles/indigo/skills/ocas-styx/scripts/styx_places_enrich.py`, NOT at `/root/.hermes/skills/ocas-styx/scripts/styx_places_enrich.py` (that path doesn't exist).
+- **Taste enrichment fails on LLM items in cron** — `taste_full_enrich.py` reports "Failed: N" for items requiring LLM resolution. This is because `llm_resolve.py` calls `hermes ask --no-stream` which returns no output in non-interactive/cron context. These items are not lost — they remain in the Taste items queue and will be retried on the next interactive or non-cron enrichment run. Do NOT treat these failures as pipeline errors.
+- **No new transactions ≠ no work** — When Plaid sync hasn't pulled new data (check `MAX(date)` in transactions.db), `styx_universal_enrich.py` may still find 5–15 merchants to re-enrich. This is normal: the script re-queriers pending/unresolved merchants against Google Places on each run. `no_result` responses are expected for heavily obfuscated names (e.g., `DD *DOORDASH *********`, `SP THANKS ICON`).
+
+## Cron pipeline (daily enrichment)
+
+When invoked as a scheduled cron job, run the full pipeline in sequence:
+
+```bash
+# Step 1: Universal merchant enrichment (all categories)
+python3 /root/.hermes/profiles/indigo/skills/ocas-styx/scripts/styx_universal_enrich.py
+
+# Step 2: Ingest enriched merchants into Taste
+python3 /root/.hermes/commons/data/ocas-taste/scripts/taste_full_enrich.py
+
+# Step 3: Deduplicate same-day Taste signals
+python3 /root/.hermes/commons/data/ocas-taste/scripts/taste_signals_dedup.py
+```
+
+**IMPORTANT script paths:**
+- `styx_universal_enrich.py` is at `/root/.hermes/profiles/indigo/skills/ocas-styx/scripts/` (NOT `/root/.hermes/commons/data/ocas-styx/`)
+- Taste scripts are at `/root/.hermes/commons/data/ocas-taste/scripts/`
+
+**Expected cron behaviors:**
+- If no new transactions since last sync, `styx_universal_enrich.py` may still find a small number (5–15) of merchants to re-enrich. These are already-enriched merchants being re-queried against Google Places. `no_result` is expected for garbled names that Google can't match — the existing enrichment from prior runs (searxng, plaid_merchant_name, internal) is preserved.
+- `taste_full_enrich.py` may report "Failed: N" for items that need LLM resolution. This is a known cron limitation (`llm_resolve.py` calls `hermes ask` which returns no output without an interactive session). Items will be retried on the next non-cron enrichment run.
+
+**Report format:** After cron run, report: merchants enriched by category, new Taste items created, signals deduped, and any errors. See `references/cron-gotchas.md` for expected cron behaviors that are NOT errors.
 
 ## Post-enrichment verification
 

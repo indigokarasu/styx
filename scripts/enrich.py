@@ -116,7 +116,7 @@ def stage_fuzzy_match(conn, cleaned_name):
 
 def get_searxng_url():
     """Get SearXNG URL from environment or default."""
-    return os.environ.get('SEARXNG_URL', 'http://localhost:8880')
+    return os.environ.get('SEARXNG_URL', 'http://localhost:8888')
 
 def searxng_search(query, num_results=5):
     """Search via SearXNG."""
