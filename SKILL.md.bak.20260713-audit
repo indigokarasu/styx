@@ -1,0 +1,434 @@
+---
+license: MIT
+name: ocas-styx
+description: Transaction data store with merchant enrichment. Provides a clean, queryable
+  interface over raw bank transaction data. Enriches garbled/obfuscated transaction
+  names into real business entities using SearXNG search plus LLM resolution. Includes
+  financial sync (Plaid API) for pulling transactions and balances daily. Other skills
+  (Taste, Rally, Vesper, Sands) read from Styx for consumption signals, spending
+  analysis, and pattern detection. NOT for creating transactions (use bank), budgeting
+  strategy (use Rally), or email-based consumption scanning (use Taste).
+source: https://github.com/indigokarasu/styx
+includes:
+- references/**
+- scripts/**
+metadata:
+  author: Indigo Karasu (indigokarasu)
+  version: 1.4.1
+tags:
+- transactions
+- finance
+- merchant-enrichment
+- banking
+- data-store
+triggers:
+- transaction data
+- bank transactions
+- merchant enrichment
+- financial data store
+- query transactions
+---
+
+# Styx — Transaction Data Store
+
+Styx is the system's transaction intelligence layer. It sits between raw bank
+data (from Plaid via financial-sync) and consumer skills that need clean
+merchant information (Taste, Rally, Vesper, Sands).
+
+## When to Use
+
+- Enriching garbled/obfuscated transaction names into real business entities
+- Merchant lookup and business matching from transaction data
+- Answering "what did I spend" or "where did I spend" questions
+- Pulling/syncing bank transactions via Plaid API
+- Spending analysis, pattern detection, or calendar-based spending context
+- Providing clean merchant data to consumer skills (Taste, Rally, Vesper, Sands)
+- Parsing email receipts (e.g., Rainbow Grocery eReceipts) and storing line items in `receipt_line_items` table
+
+## When NOT to Use
+
+- Budgeting strategy or financial planning (use Rally)
+- Email-based consumption scanning (use Taste)
+- Creating or modifying transactions (use your bank directly)
+- General web research or non-transaction search (use Sift)
+- Account management (adding/removing bank links) — use Plaid Link flow directly
+
+## Workflow
+
+Styx operates a continuous ingest-enrich-serve workflow because raw transaction data requires normalization before it becomes useful to downstream skills.
+
+1. **Ingest** — Pull transactions from Plaid API (daily cron or on-demand)
+2. **Enrich** — Resolve garbled merchant names via SearXNG search + LLM resolution
+3. **Store** — Write enriched records to SQLite database
+4. **Serve** — Expose query API for consumer skills (Taste, Rally, Vesper, Sands)
+
+Example: a transaction from "UNK MERCHANT 1234" is enriched via SearXNG search → identified as "Whole Foods Market" → stored with clean merchant name → Taste queries for spending patterns.
+
+## Core principles
+
+1. **Raw data is sacred** — transaction records from Plaid are never modified.
+   Enrichment data lives in separate tables, linked by transaction_id.
+2. **Append-only** — Styx only adds new records. It never deletes or updates
+   raw transactions. Enrichment records can be superseded (marked stale) but
+   not deleted.
+3. **Read-only for consumers** — other skills query Styx via the query API
+   or read the SQLite DB directly. They do NOT write to Styx tables.
+4. **Enrichment is idempotent** — running enrichment on already-enriched
+   transactions produces the same result. Safe to re-run.
+5. **Capture ALL Plaid fields at ingest** — `store_transaction` and the
+   backfill INSERT must persist every Plaid field onto the raw row
+   (`merchant_id`, full `location`: address/city/region/postal/lat/**lon**).
+   Dropping a field on ingest is a provenance violation, not a schema choice.
+
+### Data provenance (HARD RULE)
+
+**Plaid is the source of truth. Google enrichment is ADDITIVE only.**
+
+- Preserve every Plaid field on ingest. Never discard `location`, `merchant_id`,
+  or `merchant_entity_id`.
+- Google Places / geocoding may SUPPLEMENT (venue details: cuisine, rating,
+  price, display address) but must NEVER override or replace Plaid data.
+- `transactions.loc_*` (Plaid's point-of-sale location) is the **authoritative
+  geolocation** for a transaction when present. `merchants.geo_source` records
+  which source won.
+- When Plaid `location` is null (common — see Gotchas), Google geocoding is the
+  fallback and `geo_source='google_places'`. Expected, not a failure.
+- Never throw away provenance to "fix" a geocode. Correct mislocations from
+  Plaid's `location` (authoritative) — do not silently let Google win.
+
+## Merchant-name locale hints (geolocation when Plaid `location` is null)
+
+When Plaid `location` is null (the common case — see provenance pitfalls), the
+next-best signal is the **locale already embedded in Plaid's `merchant_name` /
+raw `name`**. Payment processors append location tokens that disambiguate
+otherwise-colliding bare names:
+
+- `BERNIES PROVINCETOWN P` → merchant_name `Bernies Provincetown` → **Provincetown, MA**
+- `TST*BACON BACON - SFO` → raw name carries `SFO` → **San Francisco, CA**
+- `MS* AWOLPROVINCETOWN` → **Provincetown, MA**
+
+**Rule:** when Plaid `location` is null, extract a locale token (`Provincetown`,
+`SFO`, `Oakland`, airport codes, etc.) from `merchant_name`/`name` and use it as
+the **Google query bias** (`f"{name} {city} {state}"`). Never geocode the bare
+name — unbiased Google returns the globally-most-prominent match and lands niche
+venues in the wrong state (Bernie's → Quincy, Bacon Bacon → Redmond).
+`build_merchant_master.py` implements this hierarchy (Plaid `location` →
+merchant_name locale hint → Google bare-name fallback). Full recipe:
+`references/merchant_name_geolocation.md`.
+
+> **Pitfall — `styx_places_enrich.py` hardcodes `city="San Francisco"`** as its
+> Google default bias. For non-SF merchants this silently mis-geocodes them to SF
+> (or a wrong SF match). Do NOT use it for trip/non-SF backfills; use
+> `build_merchant_master.py` (locale-aware) or `styx_universal_enrich.py`.
+
+## Data flow
+
+See `references/data-flow.md` for the data flow diagram.
+
+## Database
+
+Styx maintains its own SQLite database at `/root/.hermes/data/styx.db`.
+**IMPORTANT:** Hardcode this path. Do NOT use `{agent_root}` — it resolves to the indigo profile home, not the shared data directory.
+
+The active DBs are:
+- `/root/.hermes/data/transactions.db` — raw Plaid transaction data (1,344 transactions, full history 2025-02..2026-07; `merchant_entity_id` populated for 424/1,344)
+- `/root/.hermes/data/styx.db` — enriched merchant data (1,193 transaction_merchants links, 493 merchants)
+
+**Note:** Plaid `/transactions/sync` cursor can get stuck and miss transactions. If `MAX(date)` is stale, use `/transactions/get` backfill pattern (see `references/plaid-sync-cursor-recovery.md`). Sync cursors reset after backfill.
+
+A second copy exists at `/root/.hermes/commons/data/ocas-styx/styx.db` but it is a stale 0-byte stub — ignore it.
+
+**Symlink reality (2026-07-14):** `/root/.hermes/data/styx.db` is a **symlink** → `/root/indigo-repo/data/styx.db`, which is **git-tracked**. Schema `ALTER`s persist but compete with git on the symlinked target; run the migration and the enrich in the **same process** to avoid races (`references/schema-drift-recovery.md`).
+
+**Schema-drift pitfall (2026-07-14):** `styx_universal_enrich.py` crashes with `no such column: geo_source`. Root cause: `SCHEMA_DDL` in `styx_common.py` omits the 4 `merchants` columns the script writes (`geo_source`, `plaid_city`, `plaid_region`, `merchant_entity_id`) AND the `transactions` table entirely. `init_styx_db()` uses `CREATE TABLE IF NOT EXISTS`, so on a pre-existing DB these never get created. **Run `python3 scripts/migrate_styx_schema.py` BEFORE the enrich pipeline** (non-destructive, idempotent). The missing `transactions` table is a genuine skill bug: `store_transaction()`/`plaid_sync.py` write to it but `SCHEMA_DDL` never defines it, so Plaid sync cannot persist raw transactions — a dispatcher reporting "N new transactions" has nothing to enrich. The migration script flags (does not auto-create) this; the real fix is reconciling `store_transaction`'s DDL into `SCHEMA_DDL`.
+
+### Schema
+
+Three core tables: `merchants`, `transaction_merchants`, `enrichment_runs`.
+Receipt parsing table: `receipt_line_items` (23 columns — see below).
+Full DDL: [`references/schema.md`](references/schema.md)
+
+**Provenance columns (added 2026-07-07 — Plaid is source of truth):**
+- `transactions`: `merchant_id` (Plaid LEGACY stable ID — **ALWAYS NULL** in
+  this feed; do NOT key on it), `merchant_entity_id` (the REAL stable merchant
+  key; captured by `store_transaction` into a dedicated column as of 2026-07-07
+  — present for ~424/1,344 txns ≈ 32%, resolving to 68 distinct entities; null
+  for processor-based/redacted txns), `loc_address`, `loc_city`, `loc_region`,
+  `loc_postal`, `loc_country`, `loc_lat`, `loc_lng` (Plaid point-of-sale
+  location; authoritative geolocation when non-null).
+- Merchant MASTER (`/root/.hermes/data/merchants.db`, built by
+  `build_merchant_master.py`): keys on `merchant_entity_id` with a **hybrid
+  fallback to normalized name** (entity_id when present, else name) — because
+  `merchant_entity_id` only covers ~32% of txns. `geo_source` records which
+  geolocator won.
+- Legacy enrichment table `styx.db.merchants`: uses `plaid_merchant_id`,
+  `plaid_city`/`plaid_region`/`plaid_postal`/`plaid_country`/`plaid_lat`/
+  `plaid_lng`, and `geo_source` (`'plaid'` when Plaid location won,
+  `'google_places'` when Google was the fallback). Google enrichment writes
+  `city`/`state`/`address` but MUST NOT overwrite `plaid_*`.
+
+### receipt_line_items Table (23 columns)
+
+Used for storing parsed email receipt line items (e.g., Rainbow Grocery eReceipts).
+
+See `references/receipt-line-items-insert.md` for the correct INSERT pattern and gotchas.
+
+## Enrichment pipeline
+
+### Google Places Enrichment (All Categories)
+
+The enrichment pipeline resolves garbled/obfuscated transaction names into real businesses.
+The **default script only enriches food merchants**. For full coverage, use the 
+**universal enrichment script**:
+
+**Script:** [`styx_universal_enrichment.md`](references/styx_universal_enrichment.md) ← read this reference first
+
+```bash
+# Universal enrichment — all non-financial categories
+# Created 2026-06-20. Script exists at:
+# /root/.hermes/profiles/indigo/skills/ocas-styx/scripts/styx_universal_enrich.py
+# references/styx_universal_enrichment.md if needed.
+# Last known path (may not exist): /root/.hermes/commons/data/ocas-styx/styx_universal_enrich.py
+
+# Food-only (original script) — confirmed working
+python3 /root/.hermes/profiles/indigo/skills/ocas-styx/scripts/styx_places_enrich.py --all
+```
+
+**Categories covered by universal script:** retail, service, entertainment, transport,
+personal_care, medical, home, government, housing, travel, food/restaurant (all 10 food subcategories).
+
+**Categories skipped (no physical location):** transfer, income, bank_fees, loan_payments,
+loan_disbursements. These get `source: 'internal'`.
+
+### Legacy LLM Enrichment Pipeline
+
+For garbled names that Google Places can't resolve: exact match → fuzzy match → SearXNG search → LLM resolution → manual review queue. Full details: [`references/enrichment-pipeline.md`](references/enrichment-pipeline.md)
+
+## Query API
+
+Other skills read from Styx using these patterns:
+- **Category transactions**: enriched transactions filtered by merchant category
+- **Spending by merchant**: aggregated totals and visit counts
+- **Unresolved transactions**: candidates needing enrichment
+
+DB path: `{agent_root}/data/styx.db`
+
+## Receipt Parsing Pipeline
+
+When parsing email receipts (e.g., Rainbow Grocery):
+1. **Fetch emails** via `get_gmail_messages_content_batch` — large results persisted to `/tmp/hermes-results/<uuid>.txt`
+2. **Parse persisted files** — XML wrapper around JSON requires brace-depth counting to extract first complete JSON object
+3. **Extract bodies** — split by `\n\nMessage ID: `, then extract between `--- BODY ---` and `---\n\n`
+4. **Parse line items** — handle department headers, PLU/UPC codes, prices, weight/quantity info
+5. **Write to Styx** — use the `receipt_line_items` INSERT pattern above (22 values, `id` auto-increments)
+
+## Consumer skill contracts
+
+### Taste
+Taste reads from Styx to discover restaurants and food businesses that Jared
+has transacted with but that didn't appear in email/calendar.
+
+Taste queries:
+- `m.category IN ('restaurant', 'cafe', 'bar', 'food')` for dining
+- `m.category IN ('grocery', 'supermarket', 'food_store')` for food shopping
+- Transactions with `personal_finance_category = 'FOOD_AND_DRINK'` as fallback
+
+Taste does NOT write to Styx. It writes to its own `signals.jsonl` and `items.jsonl`.
+
+### Rally
+Rally reads from Styx for spending analysis and budget tracking.
+
+### Vesper
+Vesper reads from Styx for daily/weekly spending summaries in briefings.
+
+### Sands
+Sands reads from Styx for calendar-based spending context.
+
+## Security
+- Styx DB is read-only for consumer skills (enforced by skill contract, not filesystem)
+- Raw transaction data in transactions.db is never modified by Styx
+- Enrichment data is additive only
+
+## Financial Sync
+- Sync script: `{skill_root}/scripts/plaid_sync.py` (incremental, daily 7 AM cron)
+- History script: `{skill_root}/scripts/plaid_history.py` (full 24-month pull)
+- DB: `{agent_root}/data/transactions.db` (raw, read-only)
+- Cron job `a418e00ee21e`: daily 7 AM, `no_agent: true`
+
+## Gotchas
+
+Error handling in styx follows a strict never-modify-raw-data policy: if enrichment fails, log the error, mark the record as unresolved, and continue processing.
+
+### Plaid ingest & provenance pitfalls (2026-07-07)
+
+- **Plaid `location` key is `lon`, NOT `lng`.** The transaction `location`
+  object uses `{"lat": ..., "lon": ...}`. Code that reads `loc.get('lng')`
+  silently stores longitude as NULL. Use `loc.get('lon')` in `store_transaction`
+  (styx_common.py), `styx_backfill_link_enrich.py`, and
+  `styx_refresh_plaid_location.py`.
+- **Plaid `location` is SPARSE and card-present-only — verify coverage, don't
+  guess.** From an authoritative re-pull of all history (1,344 txns,
+  2026-02..2026-07): `in store` 90/862 = **10.4%** carry location,
+  `online` 2/373 = **0.5%** (effectively never), `other` 5/225 = **2.2%**.
+  Plaid geolocates only a subset of **card-present** purchases; `online`
+  transactions have no POS location at all. **Backfill must fetch every month but
+  only STORE `location` where Plaid returns it** — `online` rows correctly stay
+  NULL (that is not a miss). Never conclude "Plaid has no location" from one
+  transaction or a small sample; the per-channel rates above are the baseline.
+- **Plaid `location` is authoritative WHERE present; Google is fallback only
+  when Plaid is null.** Do NOT frame Google as the "primary" geolocator. When a
+  transaction has a non-null Plaid `location`, that point-of-sale city/region is
+  ground truth — it is what resolved the Cape Cod trip to `Provincetown, MA`
+  when Google's name-geocode wrongly returned Quincy. Google Places may
+  SUPPLEMENT venue details but never override a present Plaid `location`.
+- **Guard the merchant-geo override against truncated Plaid cities.** Plaid's
+  `location.city` is sometimes a truncation/neighborhood, not a clean city:
+  observed `Francisco` (→ San Francisco), `Flower`, `Mission`, `Van Ness`,
+  `Redwood` (→ Redwood City), often with `region=null`. When reconciling
+  `merchants` from Plaid, **only override `city`/`state` when BOTH `plaid_city`
+  and `plaid_region` are present**; write truncated/region-only values as
+  `plaid_*` provenance only (never into `city`). Otherwise you degrade a clean
+  Google city into `Francisco`. Recipe: `references/plaid_location_backfill.md`.
+- **Richer Plaid identity fields are available but NOT captured.** Each
+  transaction also carries `merchant_entity_id` (modern stable merchant ID —
+  prefer over legacy `merchant_id` for the merchant-mapping), `counterparties`
+  (may include addresses), `logo_url`, `website`. Capture these for stable
+  merchant identity / better geo before reaching for Google.
+- **Backfill Plaid `location` onto EXISTING transactions with
+  `styx_backfill_location_monthly.py`** (month-by-month; fetches all history via
+  `/transactions/get` per item per month, `UPDATE`s `loc_*` only where Plaid
+  returns a location). **`styx_refresh_plaid_location.py` is OUTDATED/BROKEN** —
+  it references `merchants.plaid_city`/`geo_source` that don't exist until added,
+  and joins `transaction_merchants` against `transactions` as if same-DB (they
+  live in `styx.db` and `transactions.db`; needs ATTACH). Use the two new
+  scripts below instead. Then run **`styx_reconcile_merchant_geo.py`** to add
+  `plaid_city`/`plaid_region`/`geo_source` to `merchants` and reconcile geography
+  from Plaid (guarded override). Full recipe: `references/plaid_location_backfill.md`.
+
+- **TWO `plaid_sync.py` files — keep BOTH `store_transaction` implementations in sync.** The 7 AM `plaid-transaction-sync` cron runs `/root/.hermes/profiles/indigo/scripts/plaid_sync.py` (workdir `~/scripts`), a SEPARATE copy from the styx skill's `scripts/plaid_sync.py`. As of 2026-07-07 the `~/scripts` copy's `store_transaction` was a divergent 13-column INSERT that **silently dropped `merchant_entity_id` and all `loc_*`** on every daily sync — reintroducing the geo bug on future trips even though the styx skill copy (via `styx_common.store_transaction`) was correct. FIX: the `~/scripts` copy now captures all 22 columns (location key is `lon`, not `lng`). **When you change ingestion, grep BOTH paths** — a correct styx copy does not protect the daily cron. "Ensured going forward" means the cron's copy is fixed, not just the skill's.
+- **Plaid `/merchant_entity` endpoint is NOT_FOUND on this plan.** Both `GET /merchant_entity/{id}` and `POST /merchant_entity/get` return 404. So "merchant-entity lookup" = keying merchant identity on the stable `merchant_entity_id` (a JOIN on the raw field), NOT a live API call. Keep identity resolution local; do not build code that calls that endpoint.
+- **Backfilling `merchant_entity_id` onto `merchants` collides with the partial unique index.** When two styx merchant rows share one Plaid entity (duplicate merchants from historical name-keying), assigning the entity_id to both raises `UNIQUE constraint failed: merchants.merchant_entity_id`. Fix: on backfill, assign the entity only to the best merchant per entity (most linked txns); on live UPDATEs, guard the COALESCE subquery with `AND NOT EXISTS (SELECT 1 FROM merchants m2 WHERE m2.merchant_entity_id=t.merchant_entity_id AND m2.id!=merchants.id)`.
+- **Verify the end state, not just the code change.** After fixing ingestion/enrichment, prove the daily path actually captures `loc_*` + `merchant_entity_id` (throwaway insert into a temp copy of the `transactions` schema, then assert non-null) and re-query the affected merchants to confirm geography is correct. A correct-looking diff is not proof the pipeline works. Full recipe + verification: `references/plaid_ingest_provenance.md`.
+
+### Backfill & enrichment pitfalls (learned 2026-07-07)
+
+- **A manual `/transactions/get` backfill does NOT link into `styx.db`.** The backfill pattern (see `references/plaid-sync-cursor-recovery.md`) inserts raw rows into `transactions.db` only — it creates NO `merchants` / `transaction_merchants` rows. The daily `plaid_sync.py` does linking + enrichment together, but if you run the raw backfill alone, `styx_universal_enrich.py` then reports `Enriched: 0 / Failed: N` because there are no pending merchants to resolve. **Fix:** after a manual backfill, link the new transactions to merchant records (create `merchants` + `transaction_merchants` rows keyed by normalized RAW name for idempotency), THEN enrich. Use `scripts/styx_backfill_link_enrich.py` for a one-pass backfill+link+enrich, or see `references/backfill-linkage.md`.
+
+- **Plaid `name` asterisks are prefix masking, NOT redaction.** A `name` like `******** BURGERS & BBQ` has its leading numeric/processor prefix masked to asterisks — the real merchant is `4505 Burgers & BBQ`. The `merchant_name` column already holds the clean resolved name. Do NOT call these "redacted" and drop them; decode the masked prefix from `merchant_name`, or ask the user if ambiguous. (Contrast with fully-redacted `***************` names with NULL `merchant_name` — those truly can't be enriched.)
+
+- **Google Places geolocation is unreliable for niche/out-of-area venues.** Unbiased text search returns the globally-most-prominent match, so small-town venues land in wrong states (e.g. `Rosies Cantina` → Alabama). Location-biased search over-corrects well-known brands from elsewhere (e.g. `4505 Burgers & BBQ` → a Provincetown food truck). For trip/restaurant geography, do NOT trust the auto `state` — verify distinctive venues against the known trip location and correct the obvious ones. (User confirmed `4505 Burgers & BBQ` is San Francisco, not MA.) See `references/backfill-linkage.md`.
+ **For trip/restaurant geography, prefer Plaid `transactions.loc_*` (authoritative — it resolved the Cape Cod trip directly to `Provincetown, MA`); use Google + manual verification only when Plaid `location` is null.** Full backfill + reconciliation recipe: `references/plaid_location_backfill.md`.
+ **Provenance hierarchy:** when a transaction has a non-null Plaid `location`,
+ treat it as authoritative and never let Google override it; Google is only the
+ fallback for null-Plaid transactions (see `references/provenance.md`).
+
+- **Google bare-name geocoding is NON-DETERMINISTIC across re-runs.** Rebuilding the merchant master re-queries Google and can return DIFFERENT wrong branches run-to-run (observed: `Twisted Pizza` → Harwich MA on run 1, → West Lafayette IN on run 2; `Philz Coffee` → Glendale CA, should be SF; `Rosies Cantina` → Huntsville AL). Because results vary, `build_merchant_master.py` must CACHE the first good geocode (don't re-query on rebuild) and bias ambiguous bare-name queries toward Jared's known regions (CA Bay Area / MA) so niche venues land correctly. The current script re-queries every run — add caching + region bias before treating master geo as stable. Verify with `scripts/verify_merchant_master.py`.
+
+- **Stalled sync → just run the backfill, don't pre-explain.** When `MAX(date)` in `transactions.db` is weeks stale and the user asks "what new data did I get," the fix is obvious: run the `/transactions/get` backfill (+ link + enrich). Execute it first, then report findings. A long explanation of what's missing before acting wastes the user's time — they will tell you to "just run the sync."
+
+- **Self-update: untracked files block `git pull`** — `git stash` only stashes tracked files. New (untracked) files in the skill directory will block the merge. Move them aside before pulling, then compare/restore afterward.
+- **Self-update: stash pop may conflict** — After pulling, `git stash pop` can produce merge conflicts if both the pulled changes and the stashed changes touch the same lines.
+- **`query.py --health-check` does not exist** — Use inline Python to verify DB integrity instead.
+- **Raw transaction data is sacred** — Styx never modifies or deletes records in `transactions.db`.
+- **Name cleaning is essential** — Plaid transaction names are heavily obfuscated (e.g., `DD *DOORDASH ROYALINDI`, `ABM-350 MISSION GARAGE`). Strip prefixes before matching.
+- **Redacted names can't be enriched** — Transactions with fully redacted names (`***************`) are skipped entirely.
+- **Consumer skills are read-only** — Taste, Rally, Vesper, and Sands query Styx but must never write to Styx tables.
+- **receipt_line_items INSERT requires 22 values** — The table has 23 columns but `id` auto-increments.
+- **`google_auth_mcp` import path is profile-dependent** — When running under the `indigo` Hermes profile, `Path.home()` returns `/root/.hermes/profiles/indigo/home` instead of `/root`. Scripts that do `sys.path.insert(0, str(Path.home() / '.hermes' / 'scripts'))` or `sys.path.insert(0, str(AGENT_ROOT / 'scripts'))` will fail to find `google_auth_mcp.py`. **Fix:** Hardcode `sys.path.insert(0, str(Path('/root/.hermes/scripts')))` in any script that imports `google_auth_mcp`. **Affected scripts (all fixed as of 2026-06-04):** dispatch: `triage.py`, `check_unread.py`, `gmail_search.py`, `gmail_scan.py`; taste: `email_scan.py`, `run_historical_scans.py`; scripts: `email_check.py`, `dream_journal_pipeline.py`.
+- **Indigo's OAuth token file may lack `client_secret`** — The token file at `/root/.google_workspace_mcp/credentials/mx.indigo.karasu@gmail.com.json` may only have `access_token`, `refresh_token`, `client_id` — but `google_auth_mcp.py` needs `client_secret` for token refresh and a `token` key alias. **Fix:** Add `client_secret` from the cached client secret file. Also add `token` as an alias for `access_token` and `token_uri: 'https://oauth2.googleapis.com/token'`.
+- **Database and secrets path mismatch (migration artifact)** — After a profile/data migration, the active databases live at `/root/.hermes.old/data/` (`styx.db`, `transactions.db`) and secrets at `/root/.hermes.old/secrets/plaid.env`, but all scripts hardcode `/root/.hermes/data/` and `/root/.hermes/secrets/`. **Workaround:** Create symlinks before running scripts:
+  ```bash
+  mkdir -p /root/.hermes/data
+  ln -sf /root/.hermes.old/data/styx.db /root/.hermes/data/styx.db
+  ln -sf /root/.hermes.old/data/transactions.db /root/.hermes/data/transactions.db
+  ln -sf /root/.hermes.old/secrets /root/.hermes/secrets
+  ```
+  The universal enrichment script at `/root/.hermes.old/commons/data/ocas-styx/styx_universal_enrich.py` (not in the skill's `scripts/` or `commons/data/`) must be run from that location.
+- **Jared's token refresh adds `access_token` key** — When refreshing Jared's token, the Google OAuth response includes `access_token` (not `token`). The original file used `token` as the key. After refresh, both keys exist. `google_auth_mcp.py` reads `token_data.get("token")`, so ensure the `token` key is present.
+- **styx.db may exist with no tables** — The DB file can be created empty (0 bytes) by the skill initialization script without the schema being applied. Before any receipt parsing or enrichment, verify tables exist.
+- **`llm_resolve.py` does NOT work in cron/background context** — The script calls `hermes ask --no-stream` via subprocess, which returns no output when there is no interactive session.
+- **styx_places_enrich.py is food-only** — The original enrichment script only covers food/restaurant categories. Use `styx_universal_enrich.py` for all categories. See `references/styx_universal_enrichment.md`.
+- **SearXNG port is 8888** — The `enrich.py` script defaults to `http://localhost:8888` (not 8880). If SearXNG errors with "Connection refused", verify the container port mapping: `docker ps | grep searx`.
+- **styx_universal_enrich.py created 2026-06-20** — Now exists at `/root/.hermes/profiles/indigo/skills/ocas-styx/scripts/styx_universal_enrich.py`. Covers retail, service, entertainment, transport, personal_care, medical, home, government, housing, travel. Skips financial categories (transfer, income, bank_fees, loan_payments, loan_disbursements). Run: `python3 styx_universal_enrich.py --limit 0` to enrich all pending non-food merchants. Includes name cleaning (strips FSP*, SP , ABM-, etc.) and international address parsing (UK postcodes, city-only addresses).
+- **Correct script path for food-only enrichment** — The food-only script lives at `/root/.hermes/profiles/indigo/skills/ocas-styx/scripts/styx_places_enrich.py`, NOT at `/root/.hermes/skills/ocas-styx/scripts/styx_places_enrich.py` (that path doesn't exist).
+- **Taste enrichment fails on LLM items in cron** — `taste_full_enrich.py` reports "Failed: N" for items requiring LLM resolution. This is because `llm_resolve.py` calls `hermes ask --no-stream` which returns no output in non-interactive/cron context. These items are not lost — they remain in the Taste items queue and will be retried on the next interactive or non-cron enrichment run. Do NOT treat these failures as pipeline errors.
+- **No new transactions ≠ no work** — When Plaid sync hasn't pulled new data (check `MAX(date)` in transactions.db), `styx_universal_enrich.py` may still find 5–15 merchants to re-enrich. This is normal: the script re-queriers pending/unresolved merchants against Google Places on each run. `no_result` responses are expected for heavily obfuscated names (e.g., `DD *DOORDASH *********`, `SP THANKS ICON`).
+
+## Cron pipeline (daily enrichment)
+
+When invoked as a scheduled cron job, run the full pipeline in sequence:
+
+```bash
+# Step 1: Universal merchant enrichment (all categories)
+python3 /root/.hermes/profiles/indigo/skills/ocas-styx/scripts/styx_universal_enrich.py
+
+# Step 2: Ingest enriched merchants into Taste
+python3 /root/.hermes/commons/data/ocas-taste/scripts/taste_full_enrich.py
+
+# Step 3: Deduplicate same-day Taste signals
+python3 /root/.hermes/commons/data/ocas-taste/scripts/taste_signals_dedup.py
+```
+
+**IMPORTANT script paths:**
+- `styx_universal_enrich.py` is at `/root/.hermes/profiles/indigo/skills/ocas-styx/scripts/` (NOT `/root/.hermes/commons/data/ocas-styx/`)
+- Taste scripts are at `/root/.hermes/commons/data/ocas-taste/scripts/`
+
+**Expected cron behaviors:**
+- If no new transactions since last sync, `styx_universal_enrich.py` may still find a small number (5–15) of merchants to re-enrich. These are already-enriched merchants being re-queried against Google Places. `no_result` is expected for garbled names that Google can't match — the existing enrichment from prior runs (searxng, plaid_merchant_name, internal) is preserved.
+- `taste_full_enrich.py` may report "Failed: N" for items that need LLM resolution. This is a known cron limitation (`llm_resolve.py` calls `hermes ask` which returns no output without an interactive session). Items will be retried on the next non-cron enrichment run.
+
+**Report format:** After cron run, report: merchants enriched by category, new Taste items created, signals deduped, and any errors. See `references/cron-gotchas.md` for expected cron behaviors that are NOT errors.
+
+## Post-enrichment verification
+
+After every enrichment run, verify the results before marking the run as complete:
+1. Spot-check 5–10 enriched `transaction_merchants` records at random.
+2. Confirm the `enrichment_runs` table row for this run shows status `completed`.
+3. Verify `review_queue.jsonl` has been updated with any new low-confidence matches.
+
+## Automation
+
+### Self-update
+Pull the latest Styx package from GitHub source. Full procedure: `references/self_update.md`.
+
+## Support File Map
+
+| File | When to read |
+|---|---|
+| `references/backfill-linkage.md` | After a manual `/transactions/get` backfill — why `styx_universal_enrich.py` finds 0 new merchants, how to link+enrich, and the masked-prefix / Places-geo gotchas |
+| `scripts/styx_backfill_link_enrich.py` | One-pass backfill + link new transactions into `styx.db` + Google Places enrich (optional `--location-bias` for trips) |
+| `references/styx_universal_enrichment.md` | Before running Google Places enrichment — use this instead of the food-only default |
+| `references/financial-sync.md` | Before configuring Plaid sync |
+| `references/scripts.md` | Before running enrichment or query scripts |
+| `references/schema.md` | Before querying or modifying the database |
+| `references/query-api.md` | Before writing consumer queries |
+| `references/enrichment-pipeline.md` | Before running or debugging LLM enrichment |
+| `references/styx_universal_enrichment.md` | Before running Google Places enrichment (read FIRST) |
+| `references/self_update.md` | Before running self-update |
+| `references/cron-gotchas.md` | Before debugging cron enrichment failures |
+| `references/provenance.md` | Data provenance HARD RULE: Plaid source of truth, Google additive, `lon` key, sparse `location` coverage |
+| `scripts/styx_refresh_plaid_location.py` | **DEPRECATED/BROKEN** — schema drift + cross-DB join bug. Use the two scripts below |
+| `scripts/styx_backfill_location_monthly.py` | Month-by-month backfill of Plaid `location` onto existing transactions (authoritative source of truth) |
+| `scripts/styx_reconcile_merchant_geo.py` | Add `plaid_*` provenance cols to `merchants`; reconcile geo from Plaid (override only when city+region both present) |
+| `references/plaid_location_backfill.md` | Month-by-month Plaid location backfill + guarded merchant-geo reconciliation: commands, verified coverage, cross-DB ATTACH fix, truncated-city guard |
+| `references/merchant_name_geolocation.md` | Geolocating merchants when Plaid `location` is null: extract locale token from Plaid `merchant_name`/`name` (Provincetown, SFO) as Google query bias; never bare-name geocode |
+| `scripts/build_merchant_master.py` | Canonical merchant-master backfill from ALL transactions.db rows → `/root/.hermes/data/merchants.db` (separate from `styx.db.merchants`). Hierarchy: Plaid `location` → merchant_name locale hint → Google bare-name. Keys on `merchant_entity_id` (hybrid w/ name fallback). **Re-queries Google every run (non-deterministic) — add result caching + CA/MA region bias before trusting geo as stable.** Run: `python3 build_merchant_master.py [--dry-run]` |
+| `scripts/verify_merchant_master.py` | Post-backfill verification: prints coverage % (merchant-bearing txns represented), `merchant_entity_id` population (count + distinct), geo_source distribution, and flags fully-redacted `***************` txns. Run after any rebuild. |
+| `scripts/migrate_styx_schema.py` | Idempotent schema migration — adds the 4 missing `merchants` columns; flags the absent `transactions` table. RUN BEFORE `styx_universal_enrich.py` (see `references/schema-drift-recovery.md`) |
+| `references/schema-drift-recovery.md` | `no such column: geo_source` crash + missing `transactions` table: root cause, diagnosis, in-process fix, symlink/git-tracked caveat |
+
+## Files
+
+See `references/storage-layout.md` for the full file table.
+
+## OKRs
+
+### schedule_adherence
+- **Target**: On-demand enrichment runs complete within 5 minutes of invocation.
+
+### data_integrity
+- **Target**: Zero raw transaction records modified or deleted by enrichment pipeline.
+
+## Visibility
+
+public
