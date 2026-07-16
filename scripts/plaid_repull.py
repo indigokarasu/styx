@@ -10,6 +10,12 @@ import urllib.error
 sys.path.insert(0, __import__('os').path.dirname(__file__))
 from styx_common import load_env, plaid_post
 
+_HELP_ARGS = {"--help", "-h"}
+if set(sys.argv[1:]) & _HELP_ARGS:
+    print((__doc__ or "").strip() or "Usage: python3 plaid_repull.py")
+    sys.exit(0)
+
+
 TXN_DB = '/root/.hermes/data/transactions.db'
 
 def main():
