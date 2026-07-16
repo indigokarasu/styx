@@ -15,6 +15,13 @@ includes:
 metadata:
   author: Indigo Karasu (indigokarasu)
   version: 1.4.0
+  hermes:
+    category: data-science
+    tags:
+    - transactions
+    - finance
+    - merchant-enrichment
+    - banking
 tags:
 - transactions
 - finance
@@ -57,10 +64,10 @@ merchant information (Taste, Rally, Vesper, Sands).
 
 Styx operates a continuous ingest-enrich-serve workflow because raw transaction data requires normalization before it becomes useful to downstream skills.
 
-1. **Ingest** — Pull transactions from Plaid API (daily cron or on-demand)
-2. **Enrich** — Resolve garbled merchant names via SearXNG search + LLM resolution
-3. **Store** — Write enriched records to SQLite database
-4. **Serve** — Expose query API for consumer skills (Taste, Rally, Vesper, Sands)
+- [ ] **Ingest** — Pull transactions from Plaid API (daily cron or on-demand)
+- [ ] **Enrich** — Resolve garbled merchant names via SearXNG search + LLM resolution
+- [ ] **Store** — Write enriched records to SQLite database
+- [ ] **Serve** — Expose query API for consumer skills (Taste, Rally, Vesper, Sands)
 
 Example: a transaction from "UNK MERCHANT 1234" is enriched via SearXNG search → identified as "Whole Foods Market" → stored with clean merchant name → Taste queries for spending patterns.
 

@@ -15,6 +15,12 @@ import sys
 sys.path.insert(0, __import__('os').path.dirname(__file__))
 from styx_common import CATEGORY_MAP, normalize, init_styx_db, get_or_create_merchant, link_transaction
 
+_HELP_ARGS = {"--help", "-h"}
+if set(sys.argv[1:]) & _HELP_ARGS:
+    print((__doc__ or "").strip() or "Usage: python3 seed.py")
+    sys.exit(0)
+
+
 STYX_DB = '/root/.hermes/data/styx.db'
 TXN_DB = '/root/.hermes/data/transactions.db'
 
