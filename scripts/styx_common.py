@@ -15,6 +15,12 @@ import sys
 import urllib.request
 import urllib.error
 
+_HELP_ARGS = {"--help", "-h"}
+if set(sys.argv[1:]) & _HELP_ARGS:
+    print((__doc__ or "").strip() or "Usage: python3 styx_common.py")
+    sys.exit(0)
+
+
 # ── Category mapping ─────────────────────────────────────────────────────────
 
 CATEGORY_MAP = {
