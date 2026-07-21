@@ -1,14 +1,12 @@
 # styx
 
 <p align="center">
-<img src="./assets/readme/hero.jpg" width="100%" alt="Styx: personal transaction data store with merchant enrichment — categorizes and stores purchase history.">
+  <img src="./assets/readme/hero.jpg" width="100%" alt="Styx: personal transaction data store with merchant enrichment — categorizes and stores purchase history">
 </p>
 
-styx — Styx: personal transaction data store with merchant enrichment — categorizes and stores purchase history.
+Styx captures transaction data from email confirmations, enriches merchants with category and location, and stores a queryable personal purchase history. It supports categorization, deduplication, and time-range queries.
 
-
-> Tell it what you need. It does the work.
-
----
-
-*styx is part of the [OCAS Agent Suite](https://github.com/indigokarasu).*
+**Capabilities:**
+- Transaction extraction from email
+- Merchant enrichment and categorization
+- Queryable purchase history with time filters
