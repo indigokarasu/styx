@@ -1,7 +1,7 @@
 # styx
 
 <p align="center">
-<img src="./assets/readme/hero.svg" width="100%" alt="Styx: personal transaction data store with merchant enrichment — categorizes and stores purchase history.">
+<img src="./assets/readme/hero.jpg" width="100%" alt="Styx: personal transaction data store with merchant enrichment — categorizes and stores purchase history.">
 </p>
 
 styx — Styx: personal transaction data store with merchant enrichment — categorizes and stores purchase history.
