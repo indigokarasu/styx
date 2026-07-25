@@ -1,5 +1,6 @@
 # Styx Database Schema
 
+<<<<<<< Updated upstream
 Styx maintains its own SQLite database at `<hermes-home>/data/styx.db`.
 
 **Path note:** Hardcode this path. Do NOT use `{agent_root}` — under the `indigo` Hermes profile it resolves to `<hermes-home>/profiles/indigo/home/.hermes/` which does NOT contain Styx data. The active DBs are:
@@ -7,6 +8,15 @@ Styx maintains its own SQLite database at `<hermes-home>/data/styx.db`.
 - `<hermes-home>/data/styx.db` — enriched merchant data
 
 A second copy at `<hermes-home>/commons/data/ocas-styx/styx.db` is a stale 0-byte stub — ignore it.
+=======
+Styx maintains its own SQLite database at `~/.hermes/data/styx.db`.
+
+**Path note:** Hardcode this path. Do NOT use `{agent_root}` — under the `indigo` Hermes profile it resolves to `~/.hermes/profiles/indigo/home/.hermes/` which does NOT contain Styx data. The active DBs are:
+- `~/.hermes/data/transactions.db` — raw Plaid transaction data
+- `~/.hermes/data/styx.db` — enriched merchant data
+
+A second copy at `~/.hermes/commons/data/ocas-styx/styx.db` is a stale 0-byte stub — ignore it.
+>>>>>>> Stashed changes
 
 ## Tables
 

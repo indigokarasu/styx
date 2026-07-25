@@ -1,7 +1,11 @@
 # Styx Enrichment Status — 2026-06-25
 
 ## Universal Enrichment Run (18:46 UTC)
+<<<<<<< Updated upstream
 - Script: `python3 <hermes-home>/profiles/indigo/skills/ocas-styx/scripts/styx_universal_enrich.py --limit 0`
+=======
+- Script: `python3 ~/.hermes/profiles/indigo/skills/ocas-styx/scripts/styx_universal_enrich.py --limit 0`
+>>>>>>> Stashed changes
 - **31 merchants enriched** (new: Taco Los Altos, Philz Coffee, lululemon SF, Extreme Pizza, Serrano's Pizza, Etsy shops, Heritage Thai Spa, Berkeley Bowl, Lavender Bread & Cafe, etc.)
 - **8 failed** (non-placeable): Kalshi, Lugg Hold, Querytracker, Citi Autopay, Harbor View HOA, Livykate Clothing, Alves Cleaning, SP LIVYKATE
 - **Remaining unenriched non-financial: 69** (all expected non-placeable)
