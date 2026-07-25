@@ -89,16 +89,16 @@ See `references/data-flow.md` for the data flow diagram.
 
 ## Database
 
-Styx maintains its own SQLite database at `/root/.hermes/data/styx.db`.
+Styx maintains its own SQLite database at `<hermes-home>/data/styx.db`.
 **IMPORTANT:** Hardcode this path. Do NOT use `{agent_root}` — it resolves to the indigo profile home, not the shared data directory.
 
 The active DBs are:
-- `/root/.hermes/data/transactions.db` — raw Plaid transaction data (1,187 transactions, last: 2026-06-24)
-- `/root/.hermes/data/styx.db` — enriched merchant data (1,193 transaction_merchants links, 493 merchants)
+- `<hermes-home>/data/transactions.db` — raw Plaid transaction data (1,187 transactions, last: 2026-06-24)
+- `<hermes-home>/data/styx.db` — enriched merchant data (1,193 transaction_merchants links, 493 merchants)
 
 **Note:** Plaid `/transactions/sync` cursor can get stuck and miss transactions. If `MAX(date)` is stale, use `/transactions/get` backfill pattern (see `references/plaid-sync-cursor-recovery.md`). Sync cursors reset after backfill.
 
-A second copy exists at `/root/.hermes/commons/data/ocas-styx/styx.db` but it is a stale 0-byte stub — ignore it.
+A second copy exists at `<hermes-home>/commons/data/ocas-styx/styx.db` but it is a stale 0-byte stub — ignore it.
 
 ### Schema
 
@@ -125,12 +125,12 @@ The **default script only enriches food merchants**. For full coverage, use the
 ```bash
 # Universal enrichment — all non-financial categories
 # Created 2026-06-20. Script exists at:
-# /root/.hermes/profiles/indigo/skills/ocas-styx/scripts/styx_universal_enrich.py
+# <hermes-home>/profiles/indigo/skills/ocas-styx/scripts/styx_universal_enrich.py
 # references/styx_universal_enrichment.md if needed.
-# Last known path (may not exist): /root/.hermes/commons/data/ocas-styx/styx_universal_enrich.py
+# Last known path (may not exist): <hermes-home>/commons/data/ocas-styx/styx_universal_enrich.py
 
 # Food-only (original script) — confirmed working
-python3 /root/.hermes/profiles/indigo/skills/ocas-styx/scripts/styx_places_enrich.py --all
+python3 <hermes-home>/profiles/indigo/skills/ocas-styx/scripts/styx_places_enrich.py --all
 ```
 
 **Categories covered by universal script:** retail, service, entertainment, transport,
@@ -164,7 +164,7 @@ When parsing email receipts (e.g., Rainbow Grocery):
 ## Consumer skill contracts
 
 ### Taste
-Taste reads from Styx to discover restaurants and food businesses that owner
+Taste reads from Styx to discover restaurants and food businesses that <operator>
 has transacted with but that didn't appear in email/calendar.
 
 Taste queries:
@@ -206,23 +206,23 @@ Error handling in styx follows a strict never-modify-raw-data policy: if enrichm
 - **Redacted names can't be enriched** — Transactions with fully redacted names (`***************`) are skipped entirely.
 - **Consumer skills are read-only** — Taste, Rally, Vesper, and Sands query Styx but must never write to Styx tables.
 - **receipt_line_items INSERT requires 22 values** — The table has 23 columns but `id` auto-increments.
-- **`google_auth_mcp` import path is profile-dependent** — When running under the `indigo` Hermes profile, `Path.home()` returns `/root/.hermes/profiles/indigo/home` instead of `/root`. Scripts that do `sys.path.insert(0, str(Path.home() / '.hermes' / 'scripts'))` or `sys.path.insert(0, str(AGENT_ROOT / 'scripts'))` will fail to find `google_auth_mcp.py`. **Fix:** Hardcode `sys.path.insert(0, str(Path('/root/.hermes/scripts')))` in any script that imports `google_auth_mcp`. **Affected scripts (all fixed as of 2026-06-04):** dispatch: `triage.py`, `check_unread.py`, `gmail_search.py`, `gmail_scan.py`; taste: `email_scan.py`, `run_historical_scans.py`; scripts: `email_check.py`, `dream_journal_pipeline.py`.
-- **Indigo's OAuth token file may lack `client_secret`** — The token file at `/root/.google_workspace_mcp/credentials/mx.indigo.karasu@gmail.com.json` may only have `access_token`, `refresh_token`, `client_id` — but `google_auth_mcp.py` needs `client_secret` for token refresh and a `token` key alias. **Fix:** Add `client_secret` from the cached client secret file. Also add `token` as an alias for `access_token` and `token_uri: 'https://oauth2.googleapis.com/token'`.
-- **Database and secrets path mismatch (migration artifact)** — After a profile/data migration, the active databases live at `/root/.hermes.old/data/` (`styx.db`, `transactions.db`) and secrets at `/root/.hermes.old/secrets/plaid.env`, but all scripts hardcode `/root/.hermes/data/` and `/root/.hermes/secrets/`. **Workaround:** Create symlinks before running scripts:
+- **`google_auth_mcp` import path is profile-dependent** — When running under the `indigo` Hermes profile, `Path.home()` returns `<hermes-home>/profiles/indigo/home` instead of `/root`. Scripts that do `sys.path.insert(0, str(Path.home() / '.hermes' / 'scripts'))` or `sys.path.insert(0, str(AGENT_ROOT / 'scripts'))` will fail to find `google_auth_mcp.py`. **Fix:** Hardcode `sys.path.insert(0, str(Path('<hermes-home>/scripts')))` in any script that imports `google_auth_mcp`. **Affected scripts (all fixed as of 2026-06-04):** dispatch: `triage.py`, `check_unread.py`, `gmail_search.py`, `gmail_scan.py`; taste: `email_scan.py`, `run_historical_scans.py`; scripts: `email_check.py`, `dream_journal_pipeline.py`.
+- **the agent's OAuth token file may lack `client_secret`** — The token file at `<gworkspace-creds>/credentials/<third-party-or-user-email>.json` may only have `access_token`, `refresh_token`, `client_id` — but `google_auth_mcp.py` needs `client_secret` for token refresh and a `token` key alias. **Fix:** Add `client_secret` from the cached client secret file. Also add `token` as an alias for `access_token` and `token_uri: 'https://oauth2.googleapis.com/token'`.
+- **Database and secrets path mismatch (migration artifact)** — After a profile/data migration, the active databases live at `<hermes-home>.old/data/` (`styx.db`, `transactions.db`) and secrets at `<hermes-home>.old/secrets/plaid.env`, but all scripts hardcode `<hermes-home>/data/` and `<hermes-home>/secrets/`. **Workaround:** Create symlinks before running scripts:
   ```bash
-  mkdir -p /root/.hermes/data
-  ln -sf /root/.hermes.old/data/styx.db /root/.hermes/data/styx.db
-  ln -sf /root/.hermes.old/data/transactions.db /root/.hermes/data/transactions.db
-  ln -sf /root/.hermes.old/secrets /root/.hermes/secrets
+  mkdir -p <hermes-home>/data
+  ln -sf <hermes-home>.old/data/styx.db <hermes-home>/data/styx.db
+  ln -sf <hermes-home>.old/data/transactions.db <hermes-home>/data/transactions.db
+  ln -sf <hermes-home>.old/secrets <hermes-home>/secrets
   ```
-  The universal enrichment script at `/root/.hermes.old/commons/data/ocas-styx/styx_universal_enrich.py` (not in the skill's `scripts/` or `commons/data/`) must be run from that location.
-- **owner's token refresh adds `access_token` key** — When refreshing owner's token, the Google OAuth response includes `access_token` (not `token`). The original file used `token` as the key. After refresh, both keys exist. `google_auth_mcp.py` reads `token_data.get("token")`, so ensure the `token` key is present.
+  The universal enrichment script at `<hermes-home>.old/commons/data/ocas-styx/styx_universal_enrich.py` (not in the skill's `scripts/` or `commons/data/`) must be run from that location.
+- **<operator>'s token refresh adds `access_token` key** — When refreshing <operator>'s token, the Google OAuth response includes `access_token` (not `token`). The original file used `token` as the key. After refresh, both keys exist. `google_auth_mcp.py` reads `token_data.get("token")`, so ensure the `token` key is present.
 - **styx.db may exist with no tables** — The DB file can be created empty (0 bytes) by the skill initialization script without the schema being applied. Before any receipt parsing or enrichment, verify tables exist.
 - **`llm_resolve.py` does NOT work in cron/background context** — The script calls `hermes ask --no-stream` via subprocess, which returns no output when there is no interactive session.
 - **styx_places_enrich.py is food-only** — The original enrichment script only covers food/restaurant categories. Use `styx_universal_enrich.py` for all categories. See `references/styx_universal_enrichment.md`.
 - **SearXNG port is 8888** — The `enrich.py` script defaults to `http://localhost:8888` (not 8880). If SearXNG errors with "Connection refused", verify the container port mapping: `docker ps | grep searx`.
-- **styx_universal_enrich.py created 2026-06-20** — Now exists at `/root/.hermes/profiles/indigo/skills/ocas-styx/scripts/styx_universal_enrich.py`. Covers retail, service, entertainment, transport, personal_care, medical, home, government, housing, travel. Skips financial categories (transfer, income, bank_fees, loan_payments, loan_disbursements). Run: `python3 styx_universal_enrich.py --limit 0` to enrich all pending non-food merchants. Includes name cleaning (strips FSP*, SP , ABM-, etc.) and international address parsing (UK postcodes, city-only addresses).
-- **Correct script path for food-only enrichment** — The food-only script lives at `/root/.hermes/profiles/indigo/skills/ocas-styx/scripts/styx_places_enrich.py`, NOT at `/root/.hermes/skills/ocas-styx/scripts/styx_places_enrich.py` (that path doesn't exist).
+- **styx_universal_enrich.py created 2026-06-20** — Now exists at `<hermes-home>/profiles/indigo/skills/ocas-styx/scripts/styx_universal_enrich.py`. Covers retail, service, entertainment, transport, personal_care, medical, home, government, housing, travel. Skips financial categories (transfer, income, bank_fees, loan_payments, loan_disbursements). Run: `python3 styx_universal_enrich.py --limit 0` to enrich all pending non-food merchants. Includes name cleaning (strips FSP*, SP , ABM-, etc.) and international address parsing (UK postcodes, city-only addresses).
+- **Correct script path for food-only enrichment** — The food-only script lives at `<hermes-home>/profiles/indigo/skills/ocas-styx/scripts/styx_places_enrich.py`, NOT at `<hermes-home>/skills/ocas-styx/scripts/styx_places_enrich.py` (that path doesn't exist).
 - **Taste enrichment fails on LLM items in cron** — `taste_full_enrich.py` reports "Failed: N" for items requiring LLM resolution. This is because `llm_resolve.py` calls `hermes ask --no-stream` which returns no output in non-interactive/cron context. These items are not lost — they remain in the Taste items queue and will be retried on the next interactive or non-cron enrichment run. Do NOT treat these failures as pipeline errors.
 - **No new transactions ≠ no work** — When Plaid sync hasn't pulled new data (check `MAX(date)` in transactions.db), `styx_universal_enrich.py` may still find 5–15 merchants to re-enrich. This is normal: the script re-queriers pending/unresolved merchants against Google Places on each run. `no_result` responses are expected for heavily obfuscated names (e.g., `DD *DOORDASH *********`, `SP THANKS ICON`).
 
@@ -232,18 +232,18 @@ When invoked as a scheduled cron job, run the full pipeline in sequence:
 
 ```bash
 # Step 1: Universal merchant enrichment (all categories)
-python3 /root/.hermes/profiles/indigo/skills/ocas-styx/scripts/styx_universal_enrich.py
+python3 <hermes-home>/profiles/indigo/skills/ocas-styx/scripts/styx_universal_enrich.py
 
 # Step 2: Ingest enriched merchants into Taste
-python3 /root/.hermes/commons/data/ocas-taste/scripts/taste_full_enrich.py
+python3 <hermes-home>/commons/data/ocas-taste/scripts/taste_full_enrich.py
 
 # Step 3: Deduplicate same-day Taste signals
-python3 /root/.hermes/commons/data/ocas-taste/scripts/taste_signals_dedup.py
+python3 <hermes-home>/commons/data/ocas-taste/scripts/taste_signals_dedup.py
 ```
 
 **IMPORTANT script paths:**
-- `styx_universal_enrich.py` is at `/root/.hermes/profiles/indigo/skills/ocas-styx/scripts/` (NOT `/root/.hermes/commons/data/ocas-styx/`)
-- Taste scripts are at `/root/.hermes/commons/data/ocas-taste/scripts/`
+- `styx_universal_enrich.py` is at `<hermes-home>/profiles/indigo/skills/ocas-styx/scripts/` (NOT `<hermes-home>/commons/data/ocas-styx/`)
+- Taste scripts are at `<hermes-home>/commons/data/ocas-taste/scripts/`
 
 **Expected cron behaviors:**
 - If no new transactions since last sync, `styx_universal_enrich.py` may still find a small number (5–15) of merchants to re-enrich. These are already-enriched merchants being re-queried against Google Places. `no_result` is expected for garbled names that Google can't match — the existing enrichment from prior runs (searxng, plaid_merchant_name, internal) is preserved.

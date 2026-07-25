@@ -593,8 +593,8 @@ if __name__ == '__main__':
 
     elif args.command == 'batch':
         # Process unresolved transactions from Styx DB
-        styx_db = '/root/.hermes/data/styx.db'
-        txn_db = '/root/.hermes/data/transactions.db'
+        styx_db = '~/.hermes/data/styx.db'
+        txn_db = '~/.hermes/data/transactions.db'
         conn = sqlite3.connect(styx_db)
         conn.execute(f'ATTACH DATABASE "{txn_db}" AS txndb')
 

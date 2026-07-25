@@ -20,7 +20,7 @@ from pathlib import Path
 sys.path.insert(0, __import__('os').path.dirname(__file__))
 from styx_common import CATEGORY_MAP, init_styx_db, get_or_create_merchant, link_transaction
 
-STYX_DB = '/root/.hermes/data/styx.db'
+STYX_DB = '~/.hermes/data/styx.db'
 
 def resolve_via_llm(prompt):
     """Send a resolution prompt to the LLM via hermes CLI.
@@ -118,7 +118,7 @@ def process_queue(input_file, batch_size=20):
             resolved += 1
         else:
             # Add to review queue
-            review_file = '/root/.hermes/data/styx/review_queue.jsonl'
+            review_file = '~/.hermes/data/styx/review_queue.jsonl'
             os.makedirs(os.path.dirname(review_file), exist_ok=True)
             with open(review_file, 'a') as f:
                 f.write(json.dumps(item) + '\n')

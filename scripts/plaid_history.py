@@ -17,7 +17,7 @@ if set(sys.argv[1:]) & _HELP_ARGS:
     print((__doc__ or "").strip() or "Usage: python3 plaid_history.py")
     sys.exit(0)
 
-DB_PATH = '/root/.hermes/data/transactions.db'
+DB_PATH = '~/.hermes/data/transactions.db'
 
 def pull_transactions(access_token, account_ids, start_date, end_date):
     """Pull all transactions for given accounts using pagination."""

@@ -19,7 +19,7 @@ if set(sys.argv[1:]) & _HELP_ARGS:
     sys.exit(0)
 
 
-DB_PATH = '/root/.hermes/data/transactions.db'
+DB_PATH = '~/.hermes/data/transactions.db'
 
 def sync_item(conn, item_id, access_token, institution_name):
     """Sync transactions for a single item using cursor-based pagination."""

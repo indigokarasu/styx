@@ -2,14 +2,14 @@
 
 ## Database
 
-Styx maintains its own SQLite database at `/root/.hermes/data/styx.db`.
+Styx maintains its own SQLite database at `<hermes-home>/data/styx.db`.
 **IMPORTANT:** Hardcode this path. Do NOT use `{agent_root}` — it resolves to the indigo profile home, not the shared data directory.
 
 The active DBs are:
-- `/root/.hermes/data/transactions.db` — raw Plaid transaction data
-- `/root/.hermes/data/styx.db` — enriched merchant data
+- `<hermes-home>/data/transactions.db` — raw Plaid transaction data
+- `<hermes-home>/data/styx.db` — enriched merchant data
 
-A second copy exists at `/root/.hermes/commons/data/ocas-styx/styx.db` but it is a stale 0-byte stub — ignore it.
+A second copy exists at `<hermes-home>/commons/data/ocas-styx/styx.db` but it is a stale 0-byte stub — ignore it.
 
 ## Files
 
@@ -22,5 +22,5 @@ A second copy exists at `/root/.hermes/commons/data/ocas-styx/styx.db` but it is
 | `{agent_root}/data/styx/evidence.jsonl` | Evidence records for each enrichment run |
 | `{skill_root}/scripts/enrich.py` | LLM enrichment pipeline |
 | `{skill_root}/scripts/styx_places_enrich.py` | Google Places enrichment (food-only) |
-| `/root/.hermes/commons/data/ocas-styx/styx_universal_enrich.py` | Google Places enrichment (all categories) |
+| `<hermes-home>/commons/data/ocas-styx/styx_universal_enrich.py` | Google Places enrichment (all categories) |
 | `{skill_root}/scripts/query.py` | Query helper |

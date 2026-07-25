@@ -23,10 +23,10 @@ from difflib import SequenceMatcher
 sys.path.insert(0, __import__('os').path.dirname(__file__))
 from styx_common import CATEGORY_MAP, normalize, is_redacted, init_styx_db, get_or_create_merchant, link_transaction
 
-STYX_DB = '/root/.hermes/data/styx.db'
-TXN_DB = '/root/.hermes/data/transactions.db'
-REVIEW_QUEUE = '/root/.hermes/data/styx/review_queue.jsonl'
-NAME_MAPPINGS = '/root/.hermes/data/styx/name_mappings.json'
+STYX_DB = '~/.hermes/data/styx.db'
+TXN_DB = '~/.hermes/data/transactions.db'
+REVIEW_QUEUE = '~/.hermes/data/styx/review_queue.jsonl'
+NAME_MAPPINGS = '~/.hermes/data/styx/name_mappings.json'
 
 # ── Name cleaning ────────────────────────────────────────────────────────────
 
@@ -352,7 +352,7 @@ def enrich_transactions(dry_run=False, use_llm=True):
             for item in llm_queue:
                 f.write(json.dumps(item) + '\n')
         print(f"  Wrote {len(llm_queue)} prompts to {llm_file}")
-        print("  Run: python3 /root/.hermes/skills/ocas-styx/scripts/llm_resolve.py")
+        print("  Run: python3 ~/.hermes/skills/ocas-styx/scripts/llm_resolve.py")
         stats['llm'] = len(llm_queue)
 
     # Write review queue
