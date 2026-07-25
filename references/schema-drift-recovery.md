@@ -17,12 +17,12 @@ at the `SELECT city, state, geo_source FROM merchants WHERE id=?` line.
    - the entire `transactions` table (written by `store_transaction()` in
      `styx_common.py` and `plaid_sync.py`, and read by the enrich COALESCE join).
 3. `STYX_DB` (`<hermes-home>/data/styx.db`) is a **symlink** to a git-tracked file
-   (`/root/indigo-repo/data/styx.db`). Opening it in separate processes can race, so an
+   (`<repo-root>/data/styx.db`). Opening it in separate processes can race, so an
    `ALTER` in one `terminal()` call may not be visible to the enrich run in the next.
 
 ## Diagnosis
 ```bash
-DB=/root/indigo-repo/data/styx.db   # resolve the symlink target first
+DB=<repo-root>/data/styx.db   # resolve the symlink target first
 python3 - "$DB" <<'PY'
 import sqlite3,sys
 c=sqlite3.connect(sys.argv[1])
@@ -73,4 +73,4 @@ migration script only flags it; it does not guess the schema.
   `Enriched: N / Failed: M`). Garbled bank strings ("SP THANKS ICON", "Citi Autopay -
   Payment Withdrawal") legitimately return `no_result` from Google Places — that is expected,
   not a failure of the migration.
-- `git -C /root/indigo-repo status --short` will show `M data/styx.db` from the ALTER.
+- `git -C <fs-root>/indigo-repo status --short` will show `M data/styx.db` from the ALTER.
