@@ -26,8 +26,13 @@ Bank APIs → plaid_sync.py → transactions.db (raw)
 ### Plaid Credentials
 
 - **Client ID**: `6a0d516ea0443c000dedf2a2`
+<<<<<<< Updated upstream
 - **Secret**: stored in `<hermes-home>/secrets/plaid.env`
 - **DB**: SQLite at `<hermes-home>/data/transactions.db`
+=======
+- **Secret**: stored in `~/.hermes/secrets/plaid.env`
+- **DB**: SQLite at `~/.hermes/data/transactions.db`
+>>>>>>> Stashed changes
 
 ### Connected Institutions (May 2026)
 
@@ -40,12 +45,21 @@ Capital One, Chase, Citi, SF Fire Credit Union, Shaka, Wealthfront
 Plaid Link requires HTTPS. Self-signed cert + Python HTTPS server:
 
 ```bash
+<<<<<<< Updated upstream
 openssl req -x509 -newkey rsa:4096 -keyout <hermes-home>/secrets/plaid-link.key \
   -out <hermes-home>/secrets/plaid-link.crt -days 365 -nodes \
   -subj "/CN=<SERVER_IP>"
 ```
 
 Server: `<hermes-home>/plaid-link/server.py`
+=======
+openssl req -x509 -newkey rsa:4096 -keyout ~/.hermes/secrets/plaid-link.key \
+  -out ~/.hermes/secrets/plaid-link.crt -days 365 -nodes \
+  -subj "/CN=<SERVER_IP>"
+```
+
+Server: `~/.hermes/plaid-link/server.py`
+>>>>>>> Stashed changes
 - `GET /` → serves Plaid Link page
 - `POST /api/create-link-token` → `/link/token/create` with `products: ['transactions']`
 - `POST /api/exchange-token` → `/item/public_token/exchange` + `/accounts/get` → SQLite
@@ -56,14 +70,23 @@ SQLite schema: `plaid_items`, `accounts`, `transactions`, `sync_cursor`
 
 | Script | Purpose |
 |--------|---------|
+<<<<<<< Updated upstream
 | `<hermes-home>/scripts/plaid_sync.py` | Cursor-based incremental + balance update (daily 7 AM) |
 | `<hermes-home>/scripts/plaid_history.py` | Full 24-month historical pull via `/transactions/get` |
+=======
+| `~/.hermes/scripts/plaid_sync.py` | Cursor-based incremental + balance update (daily 7 AM) |
+| `~/.hermes/scripts/plaid_history.py` | Full 24-month historical pull via `/transactions/get` |
+>>>>>>> Stashed changes
 
 ## Cron
 
 - **Job**: `a418e00ee21e` at 7:00 AM daily
 - **Mode**: `no_agent: true` (script-only, no LLM tokens, no rate limit risk)
+<<<<<<< Updated upstream
 - **Requirement**: runs `<hermes-home>/scripts/plaid_sync.py`
+=======
+- **Requirement**: runs `~/.hermes/scripts/plaid_sync.py`
+>>>>>>> Stashed changes
 
 ## Provider Comparison
 
@@ -91,12 +114,20 @@ SQLite schema: `plaid_items`, `accounts`, `transactions`, `sync_cursor`
 
 ## Security
 
+<<<<<<< Updated upstream
 - API tokens and certificates in `<hermes-home>/secrets/` (excluded from git)
+=======
+- API tokens and certificates in `~/.hermes/secrets/` (excluded from git)
+>>>>>>> Stashed changes
 - Environment variables, never hardcoded in scripts
 
 ## State File
 
+<<<<<<< Updated upstream
 `<hermes-home>/data/banksync.md` — full project state for cross-session continuity.
+=======
+`~/.hermes/data/banksync.md` — full project state for cross-session continuity.
+>>>>>>> Stashed changes
 
 ## Lessons
 

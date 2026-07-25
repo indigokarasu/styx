@@ -12,7 +12,11 @@
 **Diagnosis**:
 ```bash
 # Run sync manually and check output
+<<<<<<< Updated upstream
 python3 <hermes-home>/profiles/indigo/scripts/plaid_sync.py
+=======
+python3 ~/.hermes/profiles/indigo/scripts/plaid_sync.py
+>>>>>>> Stashed changes
 # If all institutions return 0, the cursor may be stuck
 ```
 
@@ -51,7 +55,14 @@ When searching for transactions, be aware of processor prefixes in Plaid's `name
 
 ## Key Paths
 
+<<<<<<< Updated upstream
 - Sync script: `<hermes-home>/profiles/indigo/scripts/plaid_sync.py`
 - Raw DB: `<hermes-home>/data/transactions.db`
 - Enriched DB: `<hermes-home>/data/styx.db`
 - Credentials: `<hermes-home>/secrets/plaid.env`
+=======
+- Sync script: `~/.hermes/profiles/indigo/scripts/plaid_sync.py`
+- Raw DB: `~/.hermes/data/transactions.db`
+- Enriched DB: `~/.hermes/data/styx.db`
+- Credentials: `~/.hermes/secrets/plaid.env`
+>>>>>>> Stashed changes
