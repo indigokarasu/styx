@@ -69,14 +69,14 @@ def parse_formatted_address(addr):
             return city, country, None
     return None, None, None
 
-STYX_DB = '/root/.hermes/data/styx.db'
-TXN_DB = '/root/.hermes/data/transactions.db'
-TASTE_ITEMS = '/root/.hermes/commons/data/ocas-taste/items.jsonl'
-TASTE_SIGNALS = '/root/.hermes/commons/data/ocas-taste/signals.jsonl'
+STYX_DB = '~/.hermes/data/styx.db'
+TXN_DB = '~/.hermes/data/transactions.db'
+TASTE_ITEMS = '~/.hermes/commons/data/ocas-taste/items.jsonl'
+TASTE_SIGNALS = '~/.hermes/commons/data/ocas-taste/signals.jsonl'
 
 def load_api_key():
     env = {}
-    with open('/root/.hermes/secrets/plaid.env') as f:
+    with open('~/.hermes/secrets/plaid.env') as f:
         for line in f:
             line = line.strip()
             if line and not line.startswith('#') and '=' in line:

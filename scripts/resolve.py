@@ -31,10 +31,10 @@ if set(sys.argv[1:]) & _HELP_ARGS:
     sys.exit(0)
 
 
-STYX_DB = '/root/.hermes/data/styx.db'
-TXN_DB = '/root/.hermes/data/transactions.db'
-REVIEW_QUEUE = '/root/.hermes/data/styx/review_queue.jsonl'
-NAME_MAPPINGS = '/root/.hermes/data/styx/name_mappings.json'
+STYX_DB = '~/.hermes/data/styx.db'
+TXN_DB = '~/.hermes/data/transactions.db'
+REVIEW_QUEUE = '~/.hermes/data/styx/review_queue.jsonl'
+NAME_MAPPINGS = '~/.hermes/data/styx/name_mappings.json'
 
 # ── Prefix patterns for name cleaning ─────────────────────────────────────────
 # Curated list of known credit card transaction prefixes.

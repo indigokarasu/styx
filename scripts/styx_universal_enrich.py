@@ -24,8 +24,8 @@ import time
 import urllib.request
 import urllib.error
 
-STYX_DB  = "/root/.hermes/data/styx.db"
-TXN_DB   = "/root/.hermes/data/transactions.db"
+STYX_DB  = "~/.hermes/data/styx.db"
+TXN_DB   = "~/.hermes/data/transactions.db"
 
 SKIP_CATEGORIES = {
     "transfer", "transfer_in", "transfer_out",
@@ -35,7 +35,7 @@ SKIP_CATEGORIES = {
 
 
 def load_api_key():
-    with open("/root/.hermes/secrets/plaid.env") as f:
+    with open("~/.hermes/secrets/plaid.env") as f:
         for line in f:
             line = line.strip()
             if line and not line.startswith("#") and "=" in line:
@@ -260,7 +260,7 @@ def main():
 
     api_key = load_api_key()
     if not api_key:
-        print("ERROR: GOOGLE_PLACES_API_KEY not found in /root/.hermes/secrets/plaid.env")
+        print("ERROR: GOOGLE_PLACES_API_KEY not found in ~/.hermes/secrets/plaid.env")
         sys.exit(1)
 
     conn = sqlite3.connect(STYX_DB, timeout=30)

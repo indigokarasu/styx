@@ -33,12 +33,12 @@ rows staying NULL is correct, not a miss.
 returns a location. It never inserts new transactions.
 
 ```bash
-cd /root/.hermes/profiles/indigo/skills/ocas-styx/scripts
+cd <hermes-home>/profiles/indigo/skills/ocas-styx/scripts
 /usr/bin/python3 styx_backfill_location_monthly.py --dry-run   # observe pattern, write nothing
 /usr/bin/python3 styx_backfill_location_monthly.py             # real run
 ```
 
-- Secrets loaded at runtime from `/root/.hermes/secrets/plaid.env` (never
+- Secrets loaded at runtime from `<hermes-home>/secrets/plaid.env` (never
   hardcoded).
 - Prints per-month enrichment counts and a final channel x coverage cross-tab
   from Plaid's *authoritative* responses (not just our DB).
@@ -54,7 +54,7 @@ neighborhood-only Plaid values (`Francisco`, `Flower`, `Mission`, `Van Ness`,
 clean Google city is never degraded into `Francisco`.
 
 ```bash
-cd /root/.hermes/profiles/indigo/skills/ocas-styx/scripts
+cd <hermes-home>/profiles/indigo/skills/ocas-styx/scripts
 /usr/bin/python3 styx_reconcile_merchant_geo.py --dry-run
 /usr/bin/python3 styx_reconcile_merchant_geo.py
 ```

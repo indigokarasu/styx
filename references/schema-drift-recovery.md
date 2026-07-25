@@ -16,7 +16,7 @@ at the `SELECT city, state, geo_source FROM merchants WHERE id=?` line.
      `merchants.merchant_entity_id` (written by `styx_universal_enrich.py`)
    - the entire `transactions` table (written by `store_transaction()` in
      `styx_common.py` and `plaid_sync.py`, and read by the enrich COALESCE join).
-3. `STYX_DB` (`/root/.hermes/data/styx.db`) is a **symlink** to a git-tracked file
+3. `STYX_DB` (`<hermes-home>/data/styx.db`) is a **symlink** to a git-tracked file
    (`/root/indigo-repo/data/styx.db`). Opening it in separate processes can race, so an
    `ALTER` in one `terminal()` call may not be visible to the enrich run in the next.
 
@@ -32,7 +32,7 @@ print("transactions present:", 'transactions' in [r[0] for r in c.execute("SELEC
 c.close()
 PY
 ```
-Confirm `STYX_DB` is a symlink: `ls -la /root/.hermes/data/styx.db`.
+Confirm `STYX_DB` is a symlink: `ls -la <hermes-home>/data/styx.db`.
 
 ## Fix
 Run the idempotent migration script (additive — safe to re-run):
@@ -47,7 +47,7 @@ can't revert between calls:
 ```bash
 python3 - <<'PY'
 import sqlite3, subprocess, sys
-DB="/root/.hermes/data/styx.db"
+DB="<hermes-home>/data/styx.db"
 c=sqlite3.connect(DB, timeout=30)
 cols={r[1] for r in c.execute("PRAGMA table_info(merchants)")}
 for n,t in [("geo_source","TEXT"),("plaid_city","TEXT"),("plaid_region","TEXT"),("merchant_entity_id","TEXT")]:

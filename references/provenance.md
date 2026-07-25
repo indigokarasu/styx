@@ -49,7 +49,7 @@ enrich on top of not replace."
 The regular backfill skips already-inserted rows, so trip txns ingested before
 provenance capture have NULL `loc_*`. Use:
 ```
-python3 /root/.hermes/profiles/indigo/skills/ocas-styx/scripts/styx_refresh_plaid_location.py \
+python3 <hermes-home>/profiles/indigo/skills/ocas-styx/scripts/styx_refresh_plaid_location.py \
     --start-date 2026-06-25 --end-date 2026-07-07
 ```
 It `UPDATE`s Plaid `merchant_id` + `location` onto existing raw rows (does not

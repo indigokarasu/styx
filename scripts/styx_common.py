@@ -115,7 +115,7 @@ def init_styx_db(db_path=None):
     import importlib
     # Allow scripts to set STYX_DB before calling
     if db_path is None:
-        db_path = os.environ.get('STYX_DB', '/root/.hermes/data/styx.db')
+        db_path = os.environ.get('STYX_DB', '~/.hermes/data/styx.db')
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     conn = sqlite3.connect(db_path)
     for ddl in SCHEMA_DDL:
@@ -159,7 +159,7 @@ def load_env(path):
 
 def get_plaid_env():
     """Load Plaid credentials from the default secrets path."""
-    env = load_env('/root/.hermes/secrets/plaid.env')
+    env = load_env('~/.hermes/secrets/plaid.env')
     return env['PLAID_CLIENT_ID'], env['PLAID_SECRET'], 'https://production.plaid.com'
 
 def plaid_post(endpoint, payload, client_id=None, secret=None, base_url=None):

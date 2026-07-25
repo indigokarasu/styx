@@ -15,8 +15,8 @@ import sqlite3
 import sys
 from datetime import datetime, timedelta
 
-STYX_DB = '/root/.hermes/data/styx.db'
-TXN_DB = '/root/.hermes/data/transactions.db'
+STYX_DB = '~/.hermes/data/styx.db'
+TXN_DB = '~/.hermes/data/transactions.db'
 
 def get_conn():
     conn = sqlite3.connect(STYX_DB)

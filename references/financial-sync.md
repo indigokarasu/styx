@@ -26,8 +26,8 @@ Bank APIs → plaid_sync.py → transactions.db (raw)
 ### Plaid Credentials
 
 - **Client ID**: `6a0d516ea0443c000dedf2a2`
-- **Secret**: stored in `/root/.hermes/secrets/plaid.env`
-- **DB**: SQLite at `/root/.hermes/data/transactions.db`
+- **Secret**: stored in `<hermes-home>/secrets/plaid.env`
+- **DB**: SQLite at `<hermes-home>/data/transactions.db`
 
 ### Connected Institutions (May 2026)
 
@@ -40,12 +40,12 @@ Capital One, Chase, Citi, SF Fire Credit Union, Shaka, Wealthfront
 Plaid Link requires HTTPS. Self-signed cert + Python HTTPS server:
 
 ```bash
-openssl req -x509 -newkey rsa:4096 -keyout /root/.hermes/secrets/plaid-link.key \
-  -out /root/.hermes/secrets/plaid-link.crt -days 365 -nodes \
+openssl req -x509 -newkey rsa:4096 -keyout <hermes-home>/secrets/plaid-link.key \
+  -out <hermes-home>/secrets/plaid-link.crt -days 365 -nodes \
   -subj "/CN=<SERVER_IP>"
 ```
 
-Server: `/root/.hermes/plaid-link/server.py`
+Server: `<hermes-home>/plaid-link/server.py`
 - `GET /` → serves Plaid Link page
 - `POST /api/create-link-token` → `/link/token/create` with `products: ['transactions']`
 - `POST /api/exchange-token` → `/item/public_token/exchange` + `/accounts/get` → SQLite
@@ -56,14 +56,14 @@ SQLite schema: `plaid_items`, `accounts`, `transactions`, `sync_cursor`
 
 | Script | Purpose |
 |--------|---------|
-| `/root/.hermes/scripts/plaid_sync.py` | Cursor-based incremental + balance update (daily 7 AM) |
-| `/root/.hermes/scripts/plaid_history.py` | Full 24-month historical pull via `/transactions/get` |
+| `<hermes-home>/scripts/plaid_sync.py` | Cursor-based incremental + balance update (daily 7 AM) |
+| `<hermes-home>/scripts/plaid_history.py` | Full 24-month historical pull via `/transactions/get` |
 
 ## Cron
 
 - **Job**: `a418e00ee21e` at 7:00 AM daily
 - **Mode**: `no_agent: true` (script-only, no LLM tokens, no rate limit risk)
-- **Requirement**: runs `/root/.hermes/scripts/plaid_sync.py`
+- **Requirement**: runs `<hermes-home>/scripts/plaid_sync.py`
 
 ## Provider Comparison
 
@@ -91,12 +91,12 @@ SQLite schema: `plaid_items`, `accounts`, `transactions`, `sync_cursor`
 
 ## Security
 
-- API tokens and certificates in `/root/.hermes/secrets/` (excluded from git)
+- API tokens and certificates in `<hermes-home>/secrets/` (excluded from git)
 - Environment variables, never hardcoded in scripts
 
 ## State File
 
-`/root/.hermes/data/banksync.md` — full project state for cross-session continuity.
+`<hermes-home>/data/banksync.md` — full project state for cross-session continuity.
 
 ## Lessons
 

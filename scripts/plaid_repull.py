@@ -16,7 +16,7 @@ if set(sys.argv[1:]) & _HELP_ARGS:
     sys.exit(0)
 
 
-TXN_DB = '/root/.hermes/data/transactions.db'
+TXN_DB = '~/.hermes/data/transactions.db'
 
 def main():
     txn_conn = sqlite3.connect(TXN_DB)

@@ -10,7 +10,7 @@
 
 **Fix — manual LLM pass:**
 ```bash
-python3 /root/.hermes/skills/ocas-styx/scripts/llm_resolve.py
+python3 <hermes-home>/skills/ocas-styx/scripts/llm_resolve.py
 ```
 Or process the queue directly using the `ask` tool in an interactive session.
 
@@ -22,8 +22,8 @@ When querying across `transactions.db` and `styx.db`, you must use `ATTACH DATAB
 
 ```python
 import sqlite3
-styx = sqlite3.connect('/root/.hermes/data/styx.db')
-styx.execute("ATTACH DATABASE '/root/.hermes/data/transactions.db' AS txdb")
+styx = sqlite3.connect('<hermes-home>/data/styx.db')
+styx.execute("ATTACH DATABASE '<hermes-home>/data/transactions.db' AS txdb")
 # Now query: SELECT ... FROM txdb.transactions t JOIN transaction_merchants tm ...
 ```
 
@@ -49,13 +49,13 @@ styx.execute("ATTACH DATABASE '/root/.hermes/data/transactions.db' AS txdb")
 
 ## Script path confusion in cron invocations
 
-**Symptom:** Cron job instructions reference `/root/.hermes/commons/data/ocas-styx/styx_universal_enrich.py` but this path does not exist.
+**Symptom:** Cron job instructions reference `<hermes-home>/commons/data/ocas-styx/styx_universal_enrich.py` but this path does not exist.
 
 **Cause:** The commons data directory was part of an older data layout. Current scripts live under the profile-specific skills directory.
 
 **Correct paths:**
-- `styx_universal_enrich.py`: `/root/.hermes/profiles/indigo/skills/ocas-styx/scripts/`
-- `taste_full_enrich.py`: `/root/.hermes/commons/data/ocas-taste/scripts/`
-- `taste_signals_dedup.py`: `/root/.hermes/commons/data/ocas-taste/scripts/`
+- `styx_universal_enrich.py`: `<hermes-home>/profiles/indigo/skills/ocas-styx/scripts/`
+- `taste_full_enrich.py`: `<hermes-home>/commons/data/ocas-taste/scripts/`
+- `taste_signals_dedup.py`: `<hermes-home>/commons/data/ocas-taste/scripts/`
 
 **Fix:** Always use the paths above. If a cron invocation specifies a different path, substitute the correct one rather than failing.

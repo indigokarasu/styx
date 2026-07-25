@@ -21,8 +21,8 @@ if set(sys.argv[1:]) & _HELP_ARGS:
     sys.exit(0)
 
 
-STYX_DB = '/root/.hermes/data/styx.db'
-TXN_DB = '/root/.hermes/data/transactions.db'
+STYX_DB = '~/.hermes/data/styx.db'
+TXN_DB = '~/.hermes/data/transactions.db'
 
 def main():
     styx_conn = init_styx_db(STYX_DB)
