@@ -24,8 +24,8 @@ import time
 import urllib.request
 import urllib.error
 
-STYX_DB  = "~/.hermes/data/styx.db"
-TXN_DB   = "~/.hermes/data/transactions.db"
+STYX_DB  = os.path.expanduser("~/.hermes/data/styx.db")
+TXN_DB   = os.path.expanduser("~/.hermes/data/transactions.db")
 
 SKIP_CATEGORIES = {
     "transfer", "transfer_in", "transfer_out",
@@ -35,7 +35,7 @@ SKIP_CATEGORIES = {
 
 
 def load_api_key():
-    with open("~/.hermes/secrets/plaid.env") as f:
+    with open(os.path.expanduser("~/.hermes/secrets/plaid.env")) as f:
         for line in f:
             line = line.strip()
             if line and not line.startswith("#") and "=" in line:
