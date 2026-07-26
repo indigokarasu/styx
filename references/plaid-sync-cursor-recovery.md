@@ -10,21 +10,13 @@
 import sqlite3, json, urllib.request
 
 # 1. Check last sync date
-<<<<<<< Updated upstream
 conn = sqlite3.connect('<hermes-home>/data/transactions.db')
-=======
-conn = sqlite3.connect('~/.hermes/data/transactions.db')
->>>>>>> Stashed changes
 print("Last txn:", conn.execute('SELECT MAX(date) FROM transactions').fetchone())
 print("Total:", conn.execute('SELECT COUNT(*) FROM transactions').fetchone())
 
 # 2. Test Plaid API directly
 env = {}
-<<<<<<< Updated upstream
 with open('<hermes-home>/secrets/plaid.env') as f:
-=======
-with open('~/.hermes/secrets/plaid.env') as f:
->>>>>>> Stashed changes
     for line in f:
         if '=' in line and not line.startswith('#'):
             k, v = line.strip().split('=', 1)
@@ -53,20 +45,12 @@ import json, urllib.request, sqlite3
 from datetime import datetime
 
 env = {}; 
-<<<<<<< Updated upstream
 with open('<hermes-home>/secrets/plaid.env') as f:
-=======
-with open('~/.hermes/secrets/plaid.env') as f:
->>>>>>> Stashed changes
     for line in f:
         if '=' in line and not line.startswith('#'):
             k, v = line.strip().split('=', 1); env[k] = v
 
-<<<<<<< Updated upstream
 conn = sqlite3.connect('<hermes-home>/data/transactions.db')
-=======
-conn = sqlite3.connect('~/.hermes/data/transactions.db')
->>>>>>> Stashed changes
 existing = set(r[0] for r in conn.execute('SELECT transaction_id FROM transactions').fetchall())
 items = conn.execute('SELECT item_id, access_token, institution_name FROM plaid_items').fetchall()
 

@@ -16,22 +16,13 @@ at the `SELECT city, state, geo_source FROM merchants WHERE id=?` line.
      `merchants.merchant_entity_id` (written by `styx_universal_enrich.py`)
    - the entire `transactions` table (written by `store_transaction()` in
      `styx_common.py` and `plaid_sync.py`, and read by the enrich COALESCE join).
-<<<<<<< Updated upstream
 3. `STYX_DB` (`<hermes-home>/data/styx.db`) is a **symlink** to a git-tracked file
    (`<repo-root>/data/styx.db`). Opening it in separate processes can race, so an
-=======
-3. `STYX_DB` (`~/.hermes/data/styx.db`) is a **symlink** to a git-tracked file
-   (`<fs-root>/indigo-repo/data/styx.db`). Opening it in separate processes can race, so an
->>>>>>> Stashed changes
    `ALTER` in one `terminal()` call may not be visible to the enrich run in the next.
 
 ## Diagnosis
 ```bash
-<<<<<<< Updated upstream
-DB=<repo-root>/data/styx.db   # resolve the symlink target first
-=======
 DB=<fs-root>/indigo-repo/data/styx.db   # resolve the symlink target first
->>>>>>> Stashed changes
 python3 - "$DB" <<'PY'
 import sqlite3,sys
 c=sqlite3.connect(sys.argv[1])
@@ -41,11 +32,7 @@ print("transactions present:", 'transactions' in [r[0] for r in c.execute("SELEC
 c.close()
 PY
 ```
-<<<<<<< Updated upstream
 Confirm `STYX_DB` is a symlink: `ls -la <hermes-home>/data/styx.db`.
-=======
-Confirm `STYX_DB` is a symlink: `ls -la ~/.hermes/data/styx.db`.
->>>>>>> Stashed changes
 
 ## Fix
 Run the idempotent migration script (additive — safe to re-run):
@@ -60,11 +47,7 @@ can't revert between calls:
 ```bash
 python3 - <<'PY'
 import sqlite3, subprocess, sys
-<<<<<<< Updated upstream
 DB="<hermes-home>/data/styx.db"
-=======
-DB="~/.hermes/data/styx.db"
->>>>>>> Stashed changes
 c=sqlite3.connect(DB, timeout=30)
 cols={r[1] for r in c.execute("PRAGMA table_info(merchants)")}
 for n,t in [("geo_source","TEXT"),("plaid_city","TEXT"),("plaid_region","TEXT"),("merchant_entity_id","TEXT")]:
@@ -90,8 +73,4 @@ migration script only flags it; it does not guess the schema.
   `Enriched: N / Failed: M`). Garbled bank strings ("SP THANKS ICON", "Citi Autopay -
   Payment Withdrawal") legitimately return `no_result` from Google Places — that is expected,
   not a failure of the migration.
-<<<<<<< Updated upstream
 - `git -C <fs-root>/indigo-repo status --short` will show `M data/styx.db` from the ALTER.
-=======
-- `git -C <fs-root>/indigo-repo status --short` will show `M data/styx.db` from the ALTER.
->>>>>>> Stashed changes
