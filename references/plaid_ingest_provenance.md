@@ -4,11 +4,7 @@ Concrete snippets for the provenance fixes. Companion to the "Plaid ingest &
 provenance pitfalls" section in SKILL.md.
 
 ## 1. Daily cron `store_transaction` must capture ALL Plaid fields
-<<<<<<< Updated upstream
 File: `<hermes-home>/profiles/indigo/scripts/plaid_sync.py` — the 7 AM
-=======
-File: `~/.hermes/profiles/indigo/scripts/plaid_sync.py` — the 7 AM
->>>>>>> Stashed changes
 `plaid-transaction-sync` cron. SEPARATE from the styx skill's
 `scripts/plaid_sync.py`. Both copies must capture the same 22 columns; this
 one was found dropping `merchant_entity_id` + all `loc_*`.

@@ -33,11 +33,7 @@ Query form: `f"{display_name} {city} {state}"` (e.g. `"Bernies Provincetown Prov
 
 ## Implementation
 `scripts/build_merchant_master.py` applies this hierarchy over ALL
-<<<<<<< Updated upstream
 transactions.db rows and writes `<hermes-home>/data/merchants.db`.
-=======
-transactions.db rows and writes `~/.hermes/data/merchants.db`.
->>>>>>> Stashed changes
 `geo_source` records which tier won (`plaid` / `name_hint+google` /
 `google_name` / `national_skip` / `google_fail`).
 
