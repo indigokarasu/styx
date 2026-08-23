@@ -12,8 +12,8 @@ import os
 import re
 import sqlite3
 import sys
-import urllib.request
 import urllib.error
+import urllib.request
 
 _HELP_ARGS = {"--help", "-h"}
 if set(sys.argv[1:]) & _HELP_ARGS:
@@ -112,7 +112,6 @@ SCHEMA_DDL = [
 
 def init_styx_db(db_path=None):
     """Initialize Styx database schema. Returns connection."""
-    import importlib
     # Allow scripts to set STYX_DB before calling
     if db_path is None:
         db_path = os.environ.get('STYX_DB', '~/.hermes/data/styx.db')

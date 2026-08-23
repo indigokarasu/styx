@@ -12,14 +12,8 @@ Usage:
 """
 
 import json
-import os
 import re
 import sqlite3
-import sys
-import time
-import urllib.request
-import urllib.error
-from pathlib import Path
 
 # ── Prefix dictionary ────────────────────────────────────────────────────────
 # Maps known credit card transaction prefixes to their meaning.

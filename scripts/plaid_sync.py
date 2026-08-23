@@ -5,13 +5,12 @@ Uses cursor-based sync for efficient incremental updates.
 Run daily via cron.
 """
 
-import json
 import sqlite3
 import sys
 import time
 
 sys.path.insert(0, __import__('os').path.dirname(__file__))
-from styx_common import load_env, plaid_post, store_transaction
+from styx_common import plaid_post, store_transaction
 
 _HELP_ARGS = {"--help", "-h"}
 if set(sys.argv[1:]) & _HELP_ARGS:
@@ -114,7 +113,7 @@ def main():
     print(f"Sync complete: +{total_added} added, ~{total_modified} modified, -{total_removed} removed")
 
     # Update account balances
-    print(f"\nUpdating balances...")
+    print("\nUpdating balances...")
     for item_id, access_token, plaid_item_id, inst_name in items:
         result = plaid_post('/accounts/balance/get', {'access_token': access_token})
         if 'accounts' in result:

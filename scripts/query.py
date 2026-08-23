@@ -13,7 +13,6 @@ import argparse
 import json
 import sqlite3
 import sys
-from datetime import datetime, timedelta
 
 STYX_DB = '~/.hermes/data/styx.db'
 TXN_DB = '~/.hermes/data/transactions.db'

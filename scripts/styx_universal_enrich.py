@@ -21,8 +21,8 @@ import re
 import sqlite3
 import sys
 import time
-import urllib.request
 import urllib.error
+import urllib.request
 
 STYX_DB  = os.path.expanduser("~/.hermes/data/styx.db")
 TXN_DB   = os.path.expanduser("~/.hermes/data/transactions.db")
@@ -189,7 +189,6 @@ def enrich_merchant(conn, mid, name, category, city, dry_run):
     formatted_addr = place.get("formattedAddress", "")
     display_name   = (place.get("displayName") or {}).get("text", name)
     website        = place.get("websiteUri", "")
-    rating         = place.get("rating")
 
     # Derive category from Google types
     type_to_cat = {

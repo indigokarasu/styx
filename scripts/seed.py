@@ -14,7 +14,7 @@ import sqlite3
 import sys
 
 sys.path.insert(0, __import__('os').path.dirname(__file__))
-from styx_common import CATEGORY_MAP, normalize, init_styx_db, get_or_create_merchant, link_transaction
+from styx_common import CATEGORY_MAP, init_styx_db, normalize
 
 _HELP_ARGS = {"--help", "-h"}
 if set(sys.argv[1:]) & _HELP_ARGS:
@@ -100,14 +100,14 @@ def main():
     unlinked = total_txns - total_links
 
     print(f"\n{'='*60}")
-    print(f"Seeding complete:")
+    print("Seeding complete:")
     print(f"  Total transactions: {total_txns}")
     print(f"  Merchants: {total_merchants}")
     print(f"  Linked: {total_links}")
     print(f"  Unlinked (need enrichment): {unlinked}")
 
     # Show unlinked count by category
-    print(f"\nUnlinked transactions by category:")
+    print("\nUnlinked transactions by category:")
     styx_conn.execute(f'ATTACH DATABASE "{TXN_DB}" AS txndb')
     rows = styx_conn.execute('''
         SELECT t.personal_finance_category, COUNT(*) as cnt

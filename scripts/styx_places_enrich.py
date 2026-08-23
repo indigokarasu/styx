@@ -19,9 +19,8 @@ import re
 import sqlite3
 import sys
 import time
-import urllib.request
 import urllib.error
-from pathlib import Path
+import urllib.request
 
 
 def parse_formatted_address(addr):
@@ -195,7 +194,7 @@ def load_taste_items():
                             val = item.get(field, '').lower().strip()
                             if val:
                                 items[val] = item
-                    except:
+                    except Exception:
                         pass
     return items
 

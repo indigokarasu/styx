@@ -14,14 +14,19 @@ import os
 import re
 import sqlite3
 import sys
-import time
-import urllib.request
 import urllib.error
-from pathlib import Path
+import urllib.request
 from difflib import SequenceMatcher
 
 sys.path.insert(0, __import__('os').path.dirname(__file__))
-from styx_common import CATEGORY_MAP, normalize, is_redacted, init_styx_db, get_or_create_merchant, link_transaction
+from styx_common import (
+    CATEGORY_MAP,
+    get_or_create_merchant,
+    init_styx_db,
+    is_redacted,
+    link_transaction,
+    normalize,
+)
 
 STYX_DB = '~/.hermes/data/styx.db'
 TXN_DB = '~/.hermes/data/transactions.db'
@@ -268,7 +273,6 @@ def enrich_transactions(dry_run=False, use_llm=True):
             continue
 
         cat = CATEGORY_MAP.get(pfc, 'other')
-        resolved = False
 
         # ── Stage 1: Exact match ──
         candidates = stage_exact_match(styx_conn, raw_name, merchant_name)
@@ -278,7 +282,6 @@ def enrich_transactions(dry_run=False, use_llm=True):
                 link_transaction(styx_conn, txn_id, mid, raw_name, 'exact', 1.0)
             stats['exact'] += 1
             stats['merchants_found'] += 1
-            resolved = True
             continue
 
         # ── Clean the name ──
@@ -298,7 +301,6 @@ def enrich_transactions(dry_run=False, use_llm=True):
                 link_transaction(styx_conn, txn_id, mid, raw_name, 'fuzzy', score)
             stats['fuzzy'] += 1
             stats['merchants_found'] += 1
-            resolved = True
             continue
 
         # ── Stage 3: SearXNG search ──
@@ -315,7 +317,6 @@ def enrich_transactions(dry_run=False, use_llm=True):
                     stats['merchants_created'] += 1
             stats['search'] += 1
             stats['merchants_found'] += 1
-            resolved = True
             continue
 
         # ── Stage 4: Queue for LLM ──
@@ -349,8 +350,7 @@ def enrich_transactions(dry_run=False, use_llm=True):
         # Write prompts to a file for batch processing
         llm_file = '/tmp/styx_llm_queue.jsonl'
         with open(llm_file, 'w') as f:
-            for item in llm_queue:
-                f.write(json.dumps(item) + '\n')
+            f.writelines(json.dumps(item) + '\n' for item in llm_queue)
         print(f"  Wrote {len(llm_queue)} prompts to {llm_file}")
         print("  Run: python3 ~/.hermes/skills/ocas-styx/scripts/llm_resolve.py")
         stats['llm'] = len(llm_queue)
@@ -359,8 +359,7 @@ def enrich_transactions(dry_run=False, use_llm=True):
     if review_items and not dry_run:
         os.makedirs(os.path.dirname(REVIEW_QUEUE), exist_ok=True)
         with open(REVIEW_QUEUE, 'a') as f:
-            for item in review_items:
-                f.write(json.dumps(item) + '\n')
+            f.writelines(json.dumps(item) + '\n' for item in review_items)
 
     if not dry_run:
         styx_conn.commit()

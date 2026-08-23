@@ -11,14 +11,12 @@ Usage:
 
 import json
 import os
-import sqlite3
+import subprocess
 import sys
 import time
-import subprocess
-from pathlib import Path
 
 sys.path.insert(0, __import__('os').path.dirname(__file__))
-from styx_common import CATEGORY_MAP, init_styx_db, get_or_create_merchant, link_transaction
+from styx_common import CATEGORY_MAP, init_styx_db
 
 STYX_DB = '~/.hermes/data/styx.db'
 
@@ -132,7 +130,7 @@ def process_queue(input_file, batch_size=20):
     styx_conn.close()
 
     print(f"\n{'='*60}")
-    print(f"LLM resolution complete:")
+    print("LLM resolution complete:")
     print(f"  Resolved:          {resolved}")
     print(f"  Unresolved:        {unresolved}")
     print(f"  Merchants created: {merchants_created}")

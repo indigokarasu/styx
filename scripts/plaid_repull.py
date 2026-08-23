@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
 """Re-pull redacted transactions from Plaid and update the database."""
 
-import json
 import sqlite3
 import sys
-import urllib.request
-import urllib.error
 
 sys.path.insert(0, __import__('os').path.dirname(__file__))
-from styx_common import load_env, plaid_post
+from styx_common import plaid_post
 
 _HELP_ARGS = {"--help", "-h"}
 if set(sys.argv[1:]) & _HELP_ARGS:

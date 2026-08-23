@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
 """Pull full transaction history for all connected Plaid items."""
 
-import json
 import sqlite3
 import sys
 import time
-import urllib.request
-import urllib.error
 from datetime import datetime, timedelta
 
 sys.path.insert(0, __import__('os').path.dirname(__file__))
-from styx_common import load_env, plaid_post, store_transaction
+from styx_common import plaid_post, store_transaction
 
 _HELP_ARGS = {"--help", "-h"}
 if set(sys.argv[1:]) & _HELP_ARGS:
@@ -106,7 +103,7 @@ def main():
             print(f"  Stored: {inserted} new, {skipped} duplicates")
             grand_total += inserted
         else:
-            print(f"  No transactions returned")
+            print("  No transactions returned")
 
     print(f"\n{'='*60}")
     print(f"Total new transactions stored: {grand_total}")

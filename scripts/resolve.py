@@ -17,13 +17,14 @@ import os
 import re
 import sqlite3
 import sys
-import time
-import urllib.request
-from pathlib import Path
-from difflib import SequenceMatcher
 
 sys.path.insert(0, __import__('os').path.dirname(__file__))
-from styx_common import init_styx_db, get_or_create_merchant, link_transaction, normalize, is_redacted
+from styx_common import (
+    get_or_create_merchant,
+    init_styx_db,
+    is_redacted,
+    link_transaction,
+)
 
 _HELP_ARGS = {"--help", "-h"}
 if set(sys.argv[1:]) & _HELP_ARGS:
@@ -213,14 +214,14 @@ def process_all():
     total_txns = txn_conn.execute('SELECT COUNT(*) FROM transactions').fetchone()[0]
 
     print(f"\n{'='*60}")
-    print(f"Resolution complete:")
+    print("Resolution complete:")
     print(f"  Total transactions: {total_txns}")
     print(f"  Resolved: {resolved}")
     print(f"  Unresolved (review queue): {unresolved_count}")
     print(f"  Merchants created: {merchants_created}")
     print(f"  Total merchants: {total_merchants}")
     print(f"  Total linked: {total_links}")
-    print(f"\nMethods:")
+    print("\nMethods:")
     for method, count in sorted(method_counts.items(), key=lambda x: -x[1]):
         print(f"  {method}: {count}")
 
