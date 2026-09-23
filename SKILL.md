@@ -295,3 +295,16 @@ See `references/storage-layout.md` for the full file table.
 ## Visibility
 
 public
+
+## Support Files
+
+- `references/backfill-linkage.md` — Backfill & Enrichment Linkage (Styx)
+- `references/merchant_name_geolocation.md` — Merchant-name locale hints for geolocation
+- `references/plaid-gotchas.md` — Plaid Sync Gotchas & Recovery
+- `references/plaid_ingest_provenance.md` — Plaid ingest provenance — fix recipe (2026-07-07)
+- `references/plaid_location_backfill.md` — Plaid Location Backfill + Merchant-Geo Reconciliation
+- `references/provenance.md` — Styx Data Provenance
+- `references/receipt-parsing.md` — Receipt Line Item Enrichment for Grocery Stores
+- `references/schema-drift-recovery.md` — Styx Schema Drift — Recovery Recipe
+- `references/session-20260625-dispatch-1846-styx.md` — Styx Enrichment Status — 2026-06-25
+- `scripts/styx_common.py` — Shared utilities for Styx scripts. Import from any styx script: from styx_common import normalize, is_redac...
