@@ -241,7 +241,7 @@ python3 <hermes-home>/commons/data/ocas-taste/scripts/taste_full_enrich.py
 python3 <hermes-home>/commons/data/ocas-taste/scripts/taste_signals_dedup.py
 ```
 
-**Taste signal emission:** Steps 2–3 satisfy the consumption-signal contract — enriched merchant records (with Taste categories) are ingested into Taste and consumption signals are emitted to Taste's intake (deduped same-day). This is the canonical Styx→Taste enrichment path; do not bypass it. See `spec-ocas-suite-cross-skill-updates.md` (Preference & Data layer).
+**Taste signal emission:** Steps 2–3 satisfy the consumption-signal contract — enriched merchant records (with Taste categories) are ingested into Taste and consumption signals are emitted to Taste's intake (deduped same-day). This is the canonical Styx→Taste enrichment path; do not bypass it. See [[`spec-ocas-suite-cross-skill-updates.md` ⚠️ Pending spec] ⚠️ Pending spec — not yet authored] (Preference & Data layer).
 
 **IMPORTANT script paths:**
 - `styx_universal_enrich.py` is at `<hermes-home>/profiles/indigo/skills/ocas-styx/scripts/` (NOT `<hermes-home>/commons/data/ocas-styx/`)
