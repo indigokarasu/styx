@@ -45,3 +45,4 @@ transactions.db rows and writes `<hermes-home>/data/merchants.db`.
 Multi-location brands where Google returned the wrong branch — correct manually
 if exactness matters: `Rosies Cantina` (→ Provincetown, not Huntsville AL),
 `Philz Coffee` (→ SF, not Glendale CA).
+> **merchants.db retired 2026-09-23.** It was a July snapshot of the merchant master. The merchant master is the `merchants` table in `~/.hermes/data/styx.db`.

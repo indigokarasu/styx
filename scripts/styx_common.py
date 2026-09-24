@@ -115,6 +115,9 @@ def init_styx_db(db_path=None):
     # Allow scripts to set STYX_DB before calling
     if db_path is None:
         db_path = os.environ.get('STYX_DB', '~/.hermes/data/styx.db')
+    # Expand '~' here: an unexpanded default made makedirs() create a directory
+    # literally named '~' under the working directory and open a new, empty DB there.
+    db_path = os.path.expanduser(db_path)
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     conn = sqlite3.connect(db_path)
     for ddl in SCHEMA_DDL:
@@ -148,6 +151,7 @@ def link_transaction(conn, transaction_id, merchant_id, raw_name, method, confid
 def load_env(path):
     """Load environment variables from a .env file."""
     env = {}
+    path = os.path.expanduser(path)
     with open(path) as f:
         for line in f:
             line = line.strip()
