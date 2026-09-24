@@ -1,1 +1,4 @@
 __pycache__/
+
+# Scratch databases from scripts run with an unexpanded ~ path
+/~/
