@@ -223,7 +223,18 @@ Error handling in styx follows a strict never-modify-raw-data policy: if enrichm
 - **SearXNG port is 8888** — The `enrich.py` script defaults to `http://localhost:8888` (not 8880). If SearXNG errors with "Connection refused", verify the container port mapping: `docker ps | grep searx`.
 - **styx_universal_enrich.py created 2026-06-20** — Now exists at `<hermes-home>/profiles/indigo/skills/ocas-styx/scripts/styx_universal_enrich.py`. Covers retail, service, entertainment, transport, personal_care, medical, home, government, housing, travel. Skips financial categories (transfer, income, bank_fees, loan_payments, loan_disbursements). Run: `python3 styx_universal_enrich.py --limit 0` to enrich all pending non-food merchants. Includes name cleaning (strips FSP*, SP , ABM-, etc.) and international address parsing (UK postcodes, city-only addresses).
 - **Correct script path for food-only enrichment** — The food-only script lives at `<hermes-home>/profiles/indigo/skills/ocas-styx/scripts/styx_places_enrich.py`, NOT at `<hermes-home>/skills/ocas-styx/scripts/styx_places_enrich.py` (that path doesn't exist).
-- **Taste enrichment fails on LLM items in cron** — `taste_full_enrich.py` reports "Failed: N" for items requiring LLM resolution. This is because `llm_resolve.py` calls `hermes ask --no-stream` which returns no output in non-interactive/cron context. These items are not lost — they remain in the Taste items queue and will be retried on the next interactive or non-cron enrichment run. Do NOT treat these failures as pipeline errors.
+- **`taste_full_enrich.py` HTTP 429 is a distinct failure from the cron LLM limit** — Observed
+  2026-09-27: 61 of 160 items failed with `HTTP Error 429: Too Many Requests` from Google
+  Places, while `styx_universal_enrich.py` in the same run had no rate errors. The documented
+  cron limitation is `llm_resolve.py` returning nothing (`hermes ask` needs an interactive
+  session); a 429 means the Google Places quota was actually exhausted, and the affected
+  merchants stay pending for the next run. Do not classify 429s as the known LLM-in-cron
+  no-op — report them as a quota condition. If it recurs, the fix is to slow the
+  `taste_full_enrich.py` request rate or split its batch, not to retry harder.
+- **Verify the Styx signal count by `extraction_source`, not by substring grep** — Grepping
+  `signals.jsonl` for the string `styx` returns ~1055 lines because `styx` also appears inside
+  venue names and nested fields; the real Styx-sourced count is 283. Only the per-`extraction_source`
+  tally answers "did dedup preserve Styx signals".
 - **No new transactions ≠ no work** — When Plaid sync hasn't pulled new data (check `MAX(date)` in transactions.db), `styx_universal_enrich.py` may still find 5–15 merchants to re-enrich. This is normal: the script re-queriers pending/unresolved merchants against Google Places on each run. `no_result` responses are expected for heavily obfuscated names (e.g., `DD *DOORDASH *********`, `SP THANKS ICON`).
 
 ## Cron pipeline (daily enrichment)
@@ -231,21 +242,47 @@ Error handling in styx follows a strict never-modify-raw-data policy: if enrichm
 When invoked as a scheduled cron job, run the full pipeline in sequence:
 
 ```bash
+# Step 0 (REQUIRED — run FIRST): seed new Plaid transactions into
+# merchants/transaction_merchants. Without it, enrichment only sees already-linked
+# merchants and the Styx→Taste pipe silently dries up (root cause noted 2026-08-21).
+# It is easy to miss because enrichment still reports "Enriched: N" on stale merchants.
+python3 <hermes-home>/profiles/indigo/skills/ocas-styx/scripts/seed.py
+
 # Step 1: Universal merchant enrichment (all categories)
 python3 <hermes-home>/profiles/indigo/skills/ocas-styx/scripts/styx_universal_enrich.py
 
 # Step 2: Ingest enriched merchants into Taste
-python3 <hermes-home>/commons/data/ocas-taste/scripts/taste_full_enrich.py
+python3 <hermes-home>/profiles/indigo/skills/ocas-taste/scripts/taste_full_enrich.py
 
 # Step 3: Deduplicate same-day Taste signals
-python3 <hermes-home>/commons/data/ocas-taste/scripts/taste_signals_dedup.py
+python3 <hermes-home>/profiles/indigo/skills/ocas-taste/scripts/safe_taste_dedup.py
 ```
+
+Use the `profiles/indigo/skills/...` paths above, NOT `commons/data/ocas-styx/...` or
+`commons/data/ocas-taste/...`. Confirmed 2026-09-27: `commons/data/ocas-styx/` holds no
+enrichment script and `commons/data/ocas-taste/scripts/` holds only `styx_recent_delta.py`.
+The canonical runner is `/root/.hermes/scripts/rr_styx_enrich.sh`, which runs all four steps
+in the correct order using `/root/hermes-agent/.venv/bin/python` — prefer running it.
+
+`taste_signals_dedup.py` does not exist. Use `safe_taste_dedup.py`: the other dedup script
+(`dispatch_taste_dedup.py`) keys on `event_date[:10]` while Styx signals carry `date`, so it
+collapses every Styx signal to one per venue and deletes the rest. `safe_taste_dedup.py` backs
+up `signals.jsonl` first and refuses to write if the Styx count would drop.
 
 **Taste signal emission:** Steps 2–3 satisfy the consumption-signal contract — enriched merchant records (with Taste categories) are ingested into Taste and consumption signals are emitted to Taste's intake (deduped same-day). This is the canonical Styx→Taste enrichment path; do not bypass it. See [[`spec-ocas-suite-cross-skill-updates.md` ⚠️ Pending spec] ⚠️ Pending spec — not yet authored] (Preference & Data layer).
 
 **IMPORTANT script paths:**
-- `styx_universal_enrich.py` is at `<hermes-home>/profiles/indigo/skills/ocas-styx/scripts/` (NOT `<hermes-home>/commons/data/ocas-styx/`)
-- Taste scripts are at `<hermes-home>/commons/data/ocas-taste/scripts/`
+- `seed.py` and `styx_universal_enrich.py` are at `<hermes-home>/profiles/indigo/skills/ocas-styx/scripts/` (NOT `<hermes-home>/commons/data/ocas-styx/`)
+- Taste scripts are at `<hermes-home>/profiles/indigo/skills/ocas-taste/scripts/` (NOT `<hermes-home>/commons/data/ocas-taste/scripts/`)
+- The dedup script is `safe_taste_dedup.py`; `taste_signals_dedup.py` does not exist
+
+**Linkage is a separate layer from enrichment.** `styx_universal_enrich.py` reporting
+"Enriched: N" says nothing about whether new transactions are wired to merchants — only
+`seed.py` writes `transaction_merchants` rows. Verify with:
+`SELECT COUNT(*) FROM transaction_merchants` and compare against the transaction count.
+As of 2026-09-27, 2,173 of 2,365 transactions are linked; of the 219 unlinked, 173 fall in
+financial categories Styx intentionally skips, and most of the remaining 46 are non-merchants
+(`CASH BACK`, fully-redacted `***********` names, HOA checks) that Google Places cannot resolve.
 
 **Expected cron behaviors:**
 - If no new transactions since last sync, `styx_universal_enrich.py` may still find a small number (5–15) of merchants to re-enrich. These are already-enriched merchants being re-queried against Google Places. `no_result` is expected for garbled names that Google can't match — the existing enrichment from prior runs (searxng, plaid_merchant_name, internal) is preserved.
