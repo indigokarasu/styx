@@ -11,7 +11,7 @@ description: >-
   consumer query against the Styx DB. NOT for creating transactions (use the
   bank directly), budgeting strategy (use Rally), or email-based consumption
   scanning (use Taste).
-source: https://github.com/<agent-handle>/styx
+source: https://github.com/indigokarasu/styx
 includes:
 - references/**
 - scripts/**
